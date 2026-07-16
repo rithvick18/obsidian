@@ -1,7 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="Obsidian XDR Banner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
-
 # Obsidian XDR (Extended Detection & Response)
 
 Welcome to **Obsidian XDR** (Obsidian Security Engine), a unified corporate banking security dashboard built to detect insider threats, monitor privileged sessions, and simulate quantum-resistant security operations.
