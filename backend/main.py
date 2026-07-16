@@ -550,43 +550,9 @@ _anomaly_queue: Optional[asyncio.Queue[dict[str, Any]]] = None
 _ws_clients: set[WebSocket] = set()
 
 # ---------------------------------------------------------------------------
-# Corporate profile definitions
+# Corporate profile definitions purged
 # ---------------------------------------------------------------------------
 
-PROFILES: list[dict[str, Any]] = [
-    {
-        "user_id": "admin_node_01",
-        "role": "System Administrator",
-        "department": "IT Operations",
-        "action": "Standard maintenance — routine log review",
-        "risk_range": (5, 12),
-        "base_status": "SECURE",
-    },
-    {
-        "user_id": "contractor_node_02",
-        "role": "External Contractor",
-        "department": "Data Analytics",
-        "action": "Sudden mass query execution against customer PII tables",
-        "risk_range": (85, 91),
-        "base_status": "ALERT",
-    },
-    {
-        "user_id": "root_service_node_03",
-        "role": "Root Service Account",
-        "department": "Core Infrastructure",
-        "action": "Unauthorized system configuration edit — privilege escalation attempt",
-        "risk_range": (92, 96),
-        "base_status": "CRITICAL",
-    },
-    {
-        "user_id": "intern_node_04",
-        "role": "Helpdesk Intern",
-        "department": "Tier 1 Support",
-        "action": "SELECT * FROM db_admin.shadow_vault_backup — Canary Honeypot Probe",
-        "risk_range": (15, 25),
-        "base_status": "ALERT",
-    },
-]
 
 # ---------------------------------------------------------------------------
 # PQC simulation helpers
@@ -762,65 +728,48 @@ def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_sco
 
 
 # ---------------------------------------------------------------------------
-# Microservice 1 — Ingestion & Anomaly Engine
+# Microservice 1 — Ingestion & Anomaly Engine (Live Stream Tailing)
 # ---------------------------------------------------------------------------
 async def _ingestion_loop() -> None:
     """
-    Continuously generate session events for each corporate profile,
-    insert them into the SQLite database, query them back, broadcast
-    them to every connected WebSocket client, and enqueue high-risk
-    events for the Risk Evaluator.
+    Directly tails and queries the audit_telemetry database table for newly inserted logs
+    (polling by picking up records where timestamp is greater than the loop's previous check).
+    If the database is empty, rely entirely on records being generated via external REST calls
+    or real historical entries committed during startup seeding.
     """
-    cycle_index = 0
+    def get_latest_timestamp() -> str:
+        row = db_query("SELECT MAX(timestamp) as max_ts FROM audit_telemetry", fetch_one=True)
+        if row and row["max_ts"]:
+            return row["max_ts"]
+        return datetime.now(timezone.utc).isoformat()
+
+    last_timestamp = await asyncio.to_thread(get_latest_timestamp)
+
     while True:
-        profile = PROFILES[cycle_index % len(PROFILES)]
-        base_score = random.randint(*profile['risk_range'])
-        dynamic_score, factors, is_honeypot, tamper_sig = _calculate_role_distance_risk(
-            user_id=profile['user_id'],
-            role=profile['role'],
-            action=profile['action'],
-            base_score=base_score,
-        )
+        def query_new_events(ts: str) -> list[dict[str, Any]]:
+            rows = db_query("SELECT * FROM audit_telemetry WHERE timestamp > ? ORDER BY timestamp ASC", (ts,))
+            events = []
+            for r in rows:
+                event = dict(r)
+                event["event_id"] = event.pop("id")
+                event["is_honeypot"] = bool(event["is_honeypot"])
+                event["risk_factors"] = safe_deserialize_risk_factors(event["risk_factors"])
+                events.append(event)
+            return events
 
-        # Map to specific resource
-        resource = 'IT-COLO-CLUSTER-01'
-        if profile['user_id'] == 'contractor_node_02':
-            resource = 'SV-PROD-DB-02'
-        elif profile['user_id'] == 'root_service_node_03':
-            resource = 'OBSIDIAN-VAULT-PRIMARY'
-        elif profile['user_id'] == 'intern_node_04':
-            resource = 'db_admin.shadow_vault_backup' if is_honeypot else 'IT-COLO-CLUSTER-01'
+        try:
+            new_events = await asyncio.to_thread(query_new_events, last_timestamp)
+            for event in new_events:
+                last_timestamp = event["timestamp"]
 
-        event_id = str(uuid4())
-        raw_event = {
-            'event_id': event_id,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'user_id': profile['user_id'],
-            'role': profile['role'],
-            'department': profile['department'],
-            'action': profile['action'],
-            'resource': resource,
-            'risk_score': dynamic_score,
-            'status': 'CRITICAL HONEYPOT BREACH' if is_honeypot else profile['base_status'],
-            'is_honeypot': is_honeypot,
-            'tamper_lock_signature': tamper_sig,
-            'risk_factors': factors,
-        }
+                # If risk exceeds threshold or honeypot tripped, hand off to the Risk Evaluator
+                if event.get('risk_score', 0) > 75 or event.get('is_honeypot', False):
+                    await _anomaly_queue.put(event)
 
-        # Write to SQLite
-        await asyncio.to_thread(insert_telemetry_event, raw_event)
+                await _broadcast(json.dumps(event))
+        except Exception as e:
+            print(f"Error in ingestion tail loop: {e}")
 
-        # Query back from SQLite to stream the actual database record
-        event = await asyncio.to_thread(fetch_telemetry_event, event_id)
-
-        if event:
-            # If risk exceeds threshold or honeypot tripped, hand off to the Risk Evaluator
-            if event['risk_score'] > 75 or event['is_honeypot']:
-                await _anomaly_queue.put(event)
-
-            await _broadcast(json.dumps(event))
-
-        cycle_index += 1
         await asyncio.sleep(2)
 
 
@@ -903,28 +852,84 @@ async def ws_logs(ws: WebSocket) -> None:
 
 
 # ---------------------------------------------------------------------------
+# REST Endpoint — Telemetry Ingestion API (External REST Calls)
+# ---------------------------------------------------------------------------
+
+class ExternalTelemetryRequest(BaseModel):
+    user_id: str
+    role: str
+    department: str
+    action: str
+    resource: Optional[str] = None
+    risk_score: Optional[int] = None
+    status: Optional[str] = None
+
+@app.post("/api/v1/telemetry")
+async def post_telemetry(body: ExternalTelemetryRequest) -> dict[str, Any]:
+    """
+    Accept an external telemetry event, compute its risk score/factors dynamically,
+    and commit it to the SQLite database. The ingestion tailing loop will pick it up
+    and stream it automatically.
+    """
+    base_score = body.risk_score if body.risk_score is not None else random.randint(10, 30)
+    dynamic_score, factors, is_honeypot, tamper_sig = _calculate_role_distance_risk(
+        user_id=body.user_id,
+        role=body.role,
+        action=body.action,
+        base_score=base_score,
+    )
+
+    # Determine resource if not provided
+    resource = body.resource
+    if not resource:
+        if body.user_id == 'contractor_node_02':
+            resource = 'SV-PROD-DB-02'
+        elif body.user_id == 'root_service_node_03':
+            resource = 'OBSIDIAN-VAULT-PRIMARY'
+        elif body.user_id == 'intern_node_04':
+            resource = 'db_admin.shadow_vault_backup' if is_honeypot else 'IT-COLO-CLUSTER-01'
+        else:
+            resource = 'IT-COLO-CLUSTER-01'
+
+    event_id = str(uuid4())
+    raw_event = {
+        'event_id': event_id,
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'user_id': body.user_id,
+        'role': body.role,
+        'department': body.department,
+        'action': body.action,
+        'resource': resource,
+        'risk_score': dynamic_score,
+        'status': 'CRITICAL HONEYPOT BREACH' if is_honeypot else (body.status or 'SECURE'),
+        'is_honeypot': is_honeypot,
+        'tamper_lock_signature': tamper_sig,
+        'risk_factors': factors,
+    }
+
+    await asyncio.to_thread(insert_telemetry_event, raw_event)
+    return {"status": "success", "event_id": event_id, "event": raw_event}
+
+
+# ---------------------------------------------------------------------------
 # REST Endpoint — System Status
 # ---------------------------------------------------------------------------
 @app.get('/api/v1/system/status')
 async def system_status() -> dict[str, Any]:
     """
     Return current operational metrics of the Obsidian Security Engine.
+    Computed dynamically in real-time from the database using SQL aggregates.
     """
     def get_stats():
-        sessions_monitored = 0
-        anomalies_deflected = 0
-        try:
-            res_telemetry = db_query('SELECT COUNT(*) as count FROM audit_telemetry', fetch_one=True)
-            if res_telemetry:
-                sessions_monitored = res_telemetry['count']
-            res_ledger = db_query('SELECT COUNT(*) as count FROM mitigation_ledger', fetch_one=True)
-            if res_ledger:
-                anomalies_deflected = res_ledger['count']
-        except Exception as e:
-            print(f"Error getting stats from db: {e}")
-        return sessions_monitored, anomalies_deflected
+        res_telemetry = db_query('SELECT COUNT(*) as count, COALESCE(SUM(is_honeypot), 0) as honeypots FROM audit_telemetry', fetch_one=True)
+        res_ledger = db_query('SELECT COUNT(*) as count FROM mitigation_ledger', fetch_one=True)
+        return res_telemetry, res_ledger
 
-    sessions_monitored, anomalies_deflected = await asyncio.to_thread(get_stats)
+    res_telemetry, res_ledger = await asyncio.to_thread(get_stats)
+    
+    sessions_monitored = res_telemetry['count'] if res_telemetry else 0
+    total_honeypots = res_telemetry['honeypots'] if res_telemetry else 0
+    anomalies_deflected = res_ledger['count'] if res_ledger else 0
 
     return {
         'engine': 'Obsidian Security Engine',
@@ -932,7 +937,7 @@ async def system_status() -> dict[str, Any]:
         'sessions_monitored': sessions_monitored,
         'anomalies_deflected': anomalies_deflected,
         'vault_status': _metrics['vault_status'],
-        'honeypot_lures_active': _metrics['honeypot_lures_active'],
+        'honeypot_lures_active': max(0, 4 - total_honeypots),
         'uptime_seconds': round(time.time() - _boot_time, 2),
         'active_ws_clients': len(_ws_clients),
         'rotation_log_size': len(_rotation_log),
@@ -1073,6 +1078,113 @@ async def force_rotate(body: ForceRotateRequest) -> dict[str, Any]:
 # REST Endpoint — AI Copilot Chat
 # ---------------------------------------------------------------------------
 
+def get_copilot_database_report(query_text: str) -> str:
+    """
+    Dynamically analyze the database audit_telemetry and mitigation_ledger tables
+    to generate an operational markdown summary based on the actual system state.
+    """
+    # Fetch recent critical exceptions (risk score > 75 or is_honeypot = 1)
+    critical_rows = db_query("""
+        SELECT id, timestamp, user_id, role, action, resource, risk_score, status, is_honeypot 
+        FROM audit_telemetry 
+        WHERE risk_score > 75 OR is_honeypot = 1 
+        ORDER BY timestamp DESC 
+        LIMIT 10
+    """)
+    
+    # Group by affected role nodes (user_id)
+    grouped_rows = db_query("""
+        SELECT user_id, role, department, COUNT(*) as count, MAX(risk_score) as peak_risk, SUM(is_honeypot) as honeypots
+        FROM audit_telemetry
+        WHERE risk_score > 75 OR is_honeypot = 1
+        GROUP BY user_id, role, department
+        ORDER BY count DESC
+    """)
+    
+    # Fetch recent mitigations
+    mitigation_rows = db_query("""
+        SELECT id, timestamp, user_id, action_type, primary_operator, secondary_approver, pqc_token_id 
+        FROM mitigation_ledger 
+        ORDER BY timestamp DESC 
+        LIMIT 5
+    """)
+    
+    # Count total logs and total anomalies
+    stats = db_query("""
+        SELECT COUNT(*) as total_logs, COALESCE(SUM(is_honeypot), 0) as total_honeypots 
+        FROM audit_telemetry
+    """, fetch_one=True)
+    total_logs = stats["total_logs"] if stats else 0
+    total_honeypots = stats["total_honeypots"] if stats else 0
+    
+    # Build markdown response
+    markdown = []
+    markdown.append("### 🛡️ Obsidian Copilot — Real-Time Threat Intelligence & Database Analysis")
+    markdown.append(f"**Current Status:** Analyzing **{total_logs}** ingested telemetry logs and **{total_honeypots}** tripped canary honeypots in real-time.")
+    
+    # Add search context if query mentions a specific user/node
+    user_filter = None
+    for node in ["admin_node_01", "contractor_node_02", "root_service_node_03", "intern_node_04"]:
+        if node in query_text.lower() or node.replace("_", "") in query_text.lower().replace("_", ""):
+            user_filter = node
+            break
+    if not user_filter:
+        for role_kw in ["admin", "contractor", "root", "intern"]:
+            if role_kw in query_text.lower():
+                if role_kw == "admin": user_filter = "admin_node_01"
+                elif role_kw == "contractor": user_filter = "contractor_node_02"
+                elif role_kw == "root": user_filter = "root_service_node_03"
+                elif role_kw == "intern": user_filter = "intern_node_04"
+                break
+                
+    if user_filter:
+        markdown.append(f"\n> **Filter Active:** Isolation view for role node **`{user_filter}`** based on your search query.")
+    
+    # Group summary
+    markdown.append("\n#### 📊 Operational Status by Affected Role Nodes")
+    if not grouped_rows:
+        markdown.append("*No critical exceptions or honeypot triggers currently recorded in the active ledger.*")
+    else:
+        markdown.append("| Affected Node | Role Profile | Department | Critical Alerts | Peak Risk Score | Honeypots Tripped |")
+        markdown.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
+        for row in grouped_rows:
+            node_highlight = f"**{row['user_id']}**" if row['user_id'] == user_filter else row['user_id']
+            markdown.append(f"| {node_highlight} | {row['role']} | {row['department']} | {row['count']} | {row['peak_risk']}/100 | {row['honeypots']} |")
+            
+    # Recent critical events
+    markdown.append("\n#### 🚨 Recent Critical Exceptions (Risk Score > 75 or Honeypot)")
+    filtered_criticals = [r for r in critical_rows if not user_filter or r["user_id"] == user_filter]
+    if not filtered_criticals:
+        markdown.append("*No recent critical exceptions found matching the specified node filter.*")
+    else:
+        for row in filtered_criticals:
+            is_hp = "⚠️ [CANARY HONEYPOT TRIP]" if row['is_honeypot'] else "🔴 [HIGH RISK]"
+            markdown.append(f"- **{row['timestamp']}** | {is_hp} **{row['user_id']}** ({row['role']})")
+            markdown.append(f"  - **Action:** `{row['action']}`")
+            markdown.append(f"  - **Resource:** `{row['resource']}` | **Risk Score:** `{row['risk_score']}/100` | **Status:** `{row['status']}`")
+            
+    # Mitigations
+    markdown.append("\n#### ⚡ Executed Control-Plane Mitigations (Four-Eyes Sign-off)")
+    filtered_mitigations = [r for r in mitigation_rows if not user_filter or r["user_id"] == user_filter]
+    if not filtered_mitigations:
+        markdown.append("*No mitigations or post-quantum rotations recorded for this node/system.*")
+    else:
+        for row in filtered_mitigations:
+            approver = row['secondary_approver'] or "N/A"
+            pqc = f"Token ID: `{row['pqc_token_id'][:8]}...`" if row['pqc_token_id'] else "No key rotation"
+            markdown.append(f"- **{row['timestamp']}** | Node: `{row['user_id']}` | Action: `{row['action_type']}`")
+            markdown.append(f"  - **Operator:** `{row['primary_operator']}` | **Approver:** `{approver}` | {pqc}")
+
+    # Dynamic Operational Playbook recommendation based on database state
+    markdown.append("\n#### 📋 Recommended Playbook Response")
+    if any(row['is_honeypot'] for row in critical_rows):
+        markdown.append("1. **Critical Quarantine Protocol:** Active honeypot breach detected. Apply immediate containment sandbox (`ISOLATE_HOST`) on the compromised intern node to lock down root credential logs.")
+    if any(row['risk_score'] >= 90 for row in critical_rows if not row['is_honeypot']):
+        markdown.append("2. **Privilege Abuse Defense:** High risk score detected on service or admin node. Revoke active API tokens and initiate PQC-based digital rekeying using ML-KEM-1024 parameters.")
+    markdown.append("3. **Continuous Audit Check:** Check the real-time websocket feed to verify mitigation execution and token status updates.")
+
+    return "\n".join(markdown)
+
 
 class CopilotChatRequest(BaseModel):
     """Request body for the Copilot Chat endpoint."""
@@ -1087,58 +1199,8 @@ async def copilot_chat(body: CopilotChatRequest) -> dict[str, Any]:
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        # Fallback rule-based response
-        q = body.message.lower()
-        if "inc-8429" in q or "lateral" in q:
-            reply = (
-                "### Threat Analysis: INC-8429 (Unauthorized Database Bulk Export)\n\n"
-                "**Attack Path Overview:**\n"
-                "The attacker compromised the credential set for **j.smith@obsidian.io** from a Ukrainian IP. "
-                "They achieved **UAC Bypass (T1068)** to elevate privileges and executed direct mass query exports targeting `SV-PROD-DB-02`.\n\n"
-                "**Recommended Mitigation Playbook:**\n"
-                "1. **Isolate the workstation:** Apply the virtual quarantine sandbox rules to sever outbound routes. *(Click \"Isolate Impacted Host\" in the Incidents dashboard)*.\n"
-                "2. **Revoke Active SAML Sessions:** Invalidate Smith's SAML tokens to block subsequent database access attempts.\n"
-                "3. **Trigger Password Vault Rotation:** Force immediate rotation of administrative database connection strings."
-            )
-        elif "quantum" in q or "pqc" in q or "lattice" in q:
-            reply = (
-                "### Post-Quantum Cryptographic Migration Guide\n\n"
-                "We are currently transitioning local subnets from legacy asymmetric algorithms (RSA-4096) to NIST-approved **FIPS 203 Lattice Cryptography** standards.\n\n"
-                "**Current Readiness Standing:**\n"
-                "- **ML-KEM-768 Deployment:** **88% Active**. Remaining subnets include legacy logistics offices in APAC.\n"
-                "- **Latency Impact:** ML-KEM-768 latency is highly optimized (~152.4ms overhead), whereas RSA-4096 exhibits extreme latency (~14.2s) under quantum emulation testing.\n\n"
-                "*Recommendation:* Proceed to the **Quantum Center** to trigger corporate lattice seed keys for the remainder of legacy APAC routers."
-            )
-        elif "arjun" in q or "trust" in q or "risk" in q:
-            reply = (
-                "### User Risk Triage: Arjun Vardhan\n\n"
-                "**Identity Security Audit:**\n"
-                "- **Current Trust Score:** **28/100 (HIGH RISK)**\n"
-                "- **Critical Trigger Event:** \"Impossible Travel\" detected between Chennai, IN and Frankfurt, DE within a 45-minute window.\n"
-                "- **Access Anomaly:** Attempted to access financial buckets S3://prod-fin-records/* from the unrecognized Frankfurt IP.\n\n"
-                "**Mitigation Protocol:**\n"
-                "- Proactively place user on temporary SAML quarantine.\n"
-                "- Verify whether user initiated an authorized VPN tunnel."
-            )
-        elif "vulnerab" in q or "subnet" in q or "port" in q:
-            reply = (
-                "### Corporate Subnet Vulnerability Matrix\n\n"
-                "Active scanning of internal subnets reveals **2 Critical** and **14 Moderate** vulnerabilities:\n\n"
-                "1. **Subnet EMEA-PROD-DB:** Exposed to unpatched CVE-2026-9021 (Remote Code Execution, named \"Frostbyte\").\n"
-                "2. **Subnet MKT-WS:** High incidence of endpoint systems running UAC bypass configurations.\n\n"
-                "*Remediation action:* Trigger an automated patch schedule via the **Security Analytics** scanning board to apply the security patch instantly."
-            )
-        else:
-            reply = (
-                "### Obsidian Security Copilot Response\n\n"
-                f"I have analyzed your request: *\"{body.message}\"*.\n\n"
-                "As an AI-powered security architect, I can assist you with:\n"
-                "- **Incident Investigation:** Triage of active threat alerts like INC-8429 or INC-8395.\n"
-                "- **Quantum Cryptography:** Guidance on lattice-based keys, ML-KEM or ML-DSA protocols.\n"
-                "- **Risk Remediation:** Analyzing employee anomalies, impossible travel, or credential risk.\n"
-                "- **Remediation Execution:** Generating sandboxing commands for infected target hosts.\n\n"
-                "Please select one of the suggested query chips below or provide a more specific security telemetry question."
-            )
+        # Fallback dynamic database summary response
+        reply = await asyncio.to_thread(get_copilot_database_report, body.message)
         return {"response": reply}
 
     import urllib.request
@@ -1170,15 +1232,20 @@ async def copilot_chat(body: CopilotChatRequest) -> dict[str, Any]:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=10.0) as response:
+        # Set a short timeout for the API request
+        with urllib.request.urlopen(req, timeout=3.0) as response:
             resp_data = json.loads(response.read().decode("utf-8"))
             try:
                 text = resp_data["candidates"][0]["content"]["parts"][0]["text"]
                 return {"response": text}
             except (KeyError, IndexError):
-                return {"response": "Error: Failed to parse Gemini response payload."}
-    except Exception as e:
-        return {"response": f"Error calling Gemini API: {str(e)}"}
+                # Parse error, fallback to database report
+                reply = await asyncio.to_thread(get_copilot_database_report, body.message)
+                return {"response": reply}
+    except Exception:
+        # Connection error, timeout, or invalid API key, fallback to database report
+        reply = await asyncio.to_thread(get_copilot_database_report, body.message)
+        return {"response": reply}
 
 
 # ---------------------------------------------------------------------------
