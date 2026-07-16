@@ -10,17 +10,13 @@ import {
   Globe, 
   Terminal, 
   Bell, 
-  CheckCircle, 
-  Users,
-  Activity,
+  Sun, 
+  Moon,
   Menu,
-  X,
-  Sun,
-  Moon
+  X
 } from 'lucide-react';
 import { ActiveTab } from './types';
 
-// Import our custom views
 import ExecutiveView from './components/ExecutiveView';
 import QuantumView from './components/QuantumView';
 import IncidentsView from './components/IncidentsView';
@@ -40,9 +36,11 @@ function Dashboard() {
     const saved = localStorage.getItem('obsidian-theme');
     return (saved === 'light' || saved === 'dark') ? saved : 'dark';
   });
+  
+  // Driven entirely out of unified system node architectures
   const [notifications, setNotifications] = useState([
-    { id: 1, text: 'New anomalous travel alert for Arjun Vardhan', read: false },
-    { id: 2, text: 'Quantum subnet ML-KEM synchronization complete', read: false },
+    { id: 1, text: 'Security telemetry connection verified on local infrastructure loop.', read: false },
+    { id: 2, text: 'Quantum subnet ML-KEM-1024 cryptographic synchronization active.', read: false },
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -57,12 +55,12 @@ function Dashboard() {
     currentOperator
   } = useSecurity();
 
-  // Listen to incidents in context to generate live notifications
+  // Listen to incoming live incidents to dynamically push to alert center queue
   useEffect(() => {
-    if (incidents.length > 0) {
+    if (incidents && incidents.length > 0) {
       const latest = incidents[0];
-      const alertText = `${latest.title} (${latest.impactedEntity})`;
-      // Avoid duplicates
+      const alertText = `[CRITICAL] Anomaly recorded: ${latest.title || 'Threshold breach'} on ${latest.impactedEntity || 'Infrastructure'}`;
+      
       setNotifications((prev) => {
         if (prev.some((n) => n.text === alertText)) return prev;
         return [
@@ -100,24 +98,15 @@ function Dashboard() {
 
   const renderActiveView = () => {
     switch (activeTab) {
-      case 'executive':
-        return <ExecutiveView />;
-      case 'quantum':
-        return <QuantumView />;
-      case 'incidents':
-        return <IncidentsView />;
-      case 'analytics':
-        return <AnalyticsView />;
-      case 'risk':
-        return <RiskView />;
-      case 'copilot':
-        return <CopilotView />;
-      case 'map':
-        return <MapView />;
-      case 'sessions':
-        return <SessionsView />;
-      default:
-        return <ExecutiveView />;
+      case 'executive': return <ExecutiveView />;
+      case 'quantum': return <QuantumView />;
+      case 'incidents': return <IncidentsView />;
+      case 'analytics': return <AnalyticsView />;
+      case 'risk': return <RiskView />;
+      case 'copilot': return <CopilotView />;
+      case 'map': return <MapView />;
+      case 'sessions': return <SessionsView />;
+      default: return <ExecutiveView />;
     }
   };
 
@@ -136,36 +125,29 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-bg-base text-text-primary font-sans flex flex-col md:flex-row overflow-x-hidden antialiased selection:bg-primary selection:text-on-primary">
       
-      {/* Mobile Top Navigation Header */}
+      {/* Mobile Header Navigation */}
       <div className="md:hidden flex items-center justify-between p-4 bg-bg-sidebar border-b border-outline-variant/60 z-30 w-full">
         <div className="flex items-center gap-2">
           <Shield className="text-primary" size={24} />
           <span className="font-display-lg text-lg font-bold tracking-tight text-on-surface">Obsidian XDR</span>
         </div>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={toggleTheme} 
-            className="p-2 text-on-surface-variant hover:text-on-surface transition-colors"
-            title="Toggle theme"
-          >
+          <button onClick={toggleTheme} className="p-2 text-on-surface-variant hover:text-on-surface transition-colors">
             {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
           </button>
-          <button 
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-            className="p-2 text-on-surface-variant hover:text-on-surface"
-          >
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-on-surface-variant hover:text-on-surface">
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
       </div>
 
-      {/* Sidebar Navigation Panel (Desktop / Mobile Overlay) */}
+      {/* Sidebar Navigation Panel */}
       <aside className={`
         fixed md:static inset-y-0 left-0 z-40 w-64 bg-bg-sidebar border-r border-outline-variant/60 flex flex-col justify-between transition-transform duration-300 transform
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <div>
-          {/* Logo Brand Head */}
+          {/* Logo Head */}
           <div className="p-6 border-b border-outline-variant/40 flex items-center gap-3">
             <Shield className="text-primary glow-cyan rounded-full p-0.5" size={28} />
             <div>
@@ -174,7 +156,7 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* Navigation Links list */}
+          {/* Navigation Links */}
           <nav className="p-4 space-y-1.5">
             {navigationItems.map((item) => {
               const Icon = item.icon;
@@ -194,10 +176,7 @@ function Dashboard() {
                     }
                   `}
                 >
-                  <Icon 
-                    size={18} 
-                    className={isActive ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary transition-colors'} 
-                  />
+                  <Icon size={18} className={isActive ? 'text-primary' : 'text-on-surface-variant group-hover:text-primary transition-colors'} />
                   <span>{item.label}</span>
                 </button>
               );
@@ -205,24 +184,22 @@ function Dashboard() {
           </nav>
         </div>
 
-        {/* Sidebar Footer Details */}
+        {/* Dynamic Context Operator Tracker Footer */}
         <div className="p-4 border-t border-outline-variant/40 bg-surface-container-lowest/20">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-bold text-xs text-primary">
+            <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-bold text-xs text-primary font-mono">
               OP
             </div>
             <div>
-              <p className="text-xs font-bold text-on-surface font-sans">{currentOperator}</p>
+              <p className="text-xs font-bold text-on-surface font-mono">{currentOperator}</p>
               <p className="text-[10px] text-on-surface-variant font-mono uppercase font-semibold">Tier-3 Analyst</p>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area Wrapper */}
+      {/* Main Container Stage */}
       <main className="flex-1 flex flex-col min-w-0 min-h-screen relative">
-        
-        {/* Top Control Header */}
         <header className="p-6 border-b border-outline-variant/40 bg-surface-container-lowest/10 flex justify-between items-center z-10">
           <div>
             <div className="text-[10px] text-on-surface-variant uppercase tracking-widest font-mono">OBSIDIAN SENTINEL CORE</div>
@@ -230,30 +207,26 @@ function Dashboard() {
           </div>
 
           <div className="flex items-center gap-4">
-            
-            {/* Live Indicator Beacon */}
             {isConnected ? (
-              <div className="hidden sm:flex items-center gap-2 bg-[#005236]/30 border border-[#005236]/60 rounded-full py-1.5 px-3.5 text-xs text-[#4edea3] font-semibold">
+              <div className="hidden sm:flex items-center gap-2 bg-[#005236]/30 border border-[#005236]/60 rounded-full py-1.5 px-3.5 text-xs text-[#4edea3] font-semibold font-mono">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#4edea3] animate-pulse"></span>
                 VIGILANCE ENGINE ACTIVE
               </div>
             ) : (
-              <div className="hidden sm:flex items-center gap-2 bg-error/10 border border-error/30 rounded-full py-1.5 px-3.5 text-xs text-error font-semibold">
-                <span className="w-2.5 h-2.5 rounded-full bg-error"></span>
+              <div className="hidden sm:flex items-center gap-2 bg-error/10 border border-error/30 rounded-full py-1.5 px-3.5 text-xs text-error font-semibold font-mono">
+                <span className="w-2.5 h-2.5 rounded-full bg-error animate-pulse"></span>
                 ENGINE OFFLINE
               </div>
             )}
 
-            {/* Theme Toggle Button */}
             <button 
               onClick={toggleTheme}
               className="p-2.5 rounded-lg border border-outline-variant/60 bg-bg-card hover:bg-surface-container-high/40 text-on-surface-variant hover:text-on-surface transition-all cursor-pointer"
-              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
             >
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
 
-            {/* Notification Station Bell */}
+            {/* Notification station bell */}
             <div className="relative">
               <button 
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -265,7 +238,6 @@ function Dashboard() {
                 )}
               </button>
 
-              {/* Notification dropdown dropdown */}
               <AnimatePresence>
                 {showNotifications && (
                   <motion.div 
@@ -275,12 +247,9 @@ function Dashboard() {
                     className="absolute right-0 mt-3 w-80 bg-bg-card border border-outline-variant rounded-xl shadow-2xl overflow-hidden z-50 p-4"
                   >
                     <div className="flex justify-between items-center border-b border-outline-variant/60 pb-3 mb-3">
-                      <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">Alert Center</h4>
+                      <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider font-mono">Alert Center</h4>
                       {unreadCount > 0 && (
-                        <button 
-                          onClick={handleClearNotifications}
-                          className="text-[10px] text-primary hover:underline font-bold"
-                        >
+                        <button onClick={handleClearNotifications} className="text-[10px] text-primary hover:underline font-bold font-mono">
                           Clear All
                         </button>
                       )}
@@ -289,12 +258,12 @@ function Dashboard() {
                     <div className="space-y-3 max-h-60 overflow-y-auto">
                       {notifications.length > 0 ? (
                         notifications.map(n => (
-                          <div key={n.id} className="text-xs text-on-surface-variant p-2 hover:bg-surface-container-high/20 rounded border border-outline-variant/30">
+                          <div key={n.id} className="text-xs text-on-surface-variant p-2 hover:bg-surface-container-high/20 rounded border border-outline-variant/30 font-sans leading-tight">
                             {n.text}
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-on-surface-variant text-center py-4">No active threat alerts in queue.</p>
+                        <p className="text-xs text-on-surface-variant text-center py-4 font-sans">No active threat alerts in queue.</p>
                       )}
                     </div>
                   </motion.div>
@@ -321,7 +290,7 @@ function Dashboard() {
         </div>
       </main>
 
-      {/* Dual-Control (Four-Eyes Principle) Modal */}
+      {/* Dual Control Authorization Gate */}
       <DualControlModal
         isOpen={dualControlModalOpen}
         onClose={closeDualControlModal}
@@ -330,12 +299,8 @@ function Dashboard() {
         targetEntity={dualControlTargetEntity}
       />
 
-      {/* Backdrop overlay for mobile menu */}
       {isMobileMenuOpen && (
-        <div 
-          onClick={() => setIsMobileMenuOpen(false)} 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
-        ></div>
+        <div onClick={() => setIsMobileMenuOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"></div>
       )}
     </div>
   );
