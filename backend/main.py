@@ -875,6 +875,72 @@ async def automated_telemetry_simulator():
                     app.state.active_connections.remove(connection)
                 _ws_clients.discard(connection)
 
+        # High-Contrast Scannable Console Log (Tree Format with ANSI Colors)
+        if risk_score == 100:
+            icon = "🚨"
+            color = "\033[41m\033[97m"  # White text on absolute Red background
+        elif risk_score > 85:
+            icon = "⚠️"
+            color = "\033[91m"          # Bright Red text
+        elif risk_score > 50:
+            icon = "⚡"
+            color = "\033[93m"          # Yellow text
+        else:
+            icon = "🔹"
+            color = "\033[96m"          # Soft Cyan text
+
+        reset = "\033[0m"
+        green = "\033[92m"
+
+        log_lines = []
+        if risk_score == 100:
+            log_lines.append(f"{icon} [HONEYPOT BREACH ENCOUNTERED] - Event ID: {simulated_event['event_id']}")
+        elif risk_score > 85:
+            log_lines.append(f"{icon} [THREAT ANOMALY DETECTED] - Event ID: {simulated_event['event_id']}")
+        elif risk_score > 50:
+            log_lines.append(f"{icon} [MEDIUM ANOMALY LOGGED] - Event ID: {simulated_event['event_id']}")
+        else:
+            log_lines.append(f"{icon} [ROUTINE VERIFICATION] - Event ID: {simulated_event['event_id']}")
+
+        log_lines.append(f"├── Timestamp  : {simulated_event['timestamp']}")
+        log_lines.append(f"├── User       : {simulated_event['user_id']} ({simulated_event['role']} in {simulated_event['department']})")
+        log_lines.append(f"├── Action     : {simulated_event['action']}")
+        log_lines.append(f"├── Resource   : {simulated_event['resource']}")
+        log_lines.append(f"├── Risk Score : {simulated_event['risk_score']}")
+        log_lines.append(f"├── Framework  : {simulated_event['framework']}")
+        log_lines.append(f"└── Status     : {simulated_event['status']}")
+
+        shared_secret = ""
+        if "rotation" in simulated_event:
+            log_lines[-1] = f"├── Status     : {simulated_event['status']}"
+            log_lines.append("└── PQC Rotation Details:")
+            
+            pqc_keys = simulated_event["rotation"].get("pqc_keys", {})
+            ml_kem = pqc_keys.get("ml_kem_1024", {})
+            ml_dsa = pqc_keys.get("ml_dsa_85", {})
+            shared_secret = ml_kem.get('shared_secret_hex', '')
+            
+            log_lines.append(f"    ├── ML-KEM-1024 algorithm: {ml_kem.get('algorithm')}")
+            log_lines.append(f"    ├── Public Key Fingerprint: {ml_kem.get('public_key_fingerprint')}")
+            log_lines.append(f"    ├── Shared Secret Hex     : GREEN_PLACEHOLDER")
+            log_lines.append(f"    ├── ML-DSA-85 algorithm  : {ml_dsa.get('algorithm')}")
+            log_lines.append(f"    └── Signature Hex         : {ml_dsa.get('signature_hex')}")
+            
+            if "tamper_lock_signature" in simulated_event:
+                log_lines[-1] = f"    ├── Signature Hex         : {ml_dsa.get('signature_hex')}"
+                log_lines.append(f"    └── Tamper Lock Signature : {simulated_event['tamper_lock_signature']}")
+
+        log_block_lines = []
+        for line in log_lines:
+            if "GREEN_PLACEHOLDER" in line:
+                line_content = line.replace('GREEN_PLACEHOLDER', f'{green}{shared_secret}{color}')
+            else:
+                line_content = line
+            log_block_lines.append(f"{color}{line_content}{reset}")
+        
+        print("\n".join(log_block_lines))
+
+
 
 # 4. Global Core Startup Orchestration Loop
 @app.on_event("startup")
