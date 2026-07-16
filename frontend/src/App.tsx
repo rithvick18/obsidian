@@ -324,7 +324,7 @@ function Dashboard() {
       <DualControlModal
         isOpen={dualControlModalOpen}
         onClose={closeDualControlModal}
-        onConfirm={confirmDualControlAction}
+        onAuthorize={confirmDualControlAction}
         actionType={dualControlActionType}
         targetEntity={dualControlTargetEntity}
       />

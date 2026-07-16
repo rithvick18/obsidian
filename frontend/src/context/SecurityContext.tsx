@@ -368,17 +368,20 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: any = null;
+    let isComponentMounted = true;
 
     const connectWebSocket = () => {
       console.log('Establishing connection to Obsidian Security Engine at ws://localhost:8000/ws/logs...');
       ws = new WebSocket('ws://localhost:8000/ws/logs');
 
       ws.onopen = () => {
+        if (!isComponentMounted) return;
         console.log('Connected to live threat stream.');
         setIsConnected(true);
       };
 
       ws.onmessage = (event) => {
+        if (!isComponentMounted) return;
         try {
           const log = JSON.parse(event.data);
           processIncomingLog(log);
@@ -388,12 +391,14 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
 
       ws.onclose = () => {
+        if (!isComponentMounted) return;
         console.warn('Connection to threat stream severed. Attempting reconnect in 3s...');
         setIsConnected(false);
         reconnectTimeout = setTimeout(connectWebSocket, 3000);
       };
 
       ws.onerror = (err) => {
+        if (!isComponentMounted) return;
         console.error('WebSocket error:', err);
         ws?.close();
       };
@@ -402,7 +407,14 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     connectWebSocket();
 
     return () => {
-      if (ws) ws.close();
+      isComponentMounted = false;
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.close();
+      }
       clearTimeout(reconnectTimeout);
     };
   }, []);
@@ -510,13 +522,13 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (existingInc) {
           return prev.map((inc) => {
             if (inc.id === existingInc.id) {
-              const newLogs = [
+              const newLogs: Incident['timeline'] = [
                 {
                   time: timestampStr,
                   title: isHoneypot ? 'Canary Honeypot Breached' : isControlEvent ? 'Operator Overrode Credentials' : 'Anomaly Refinement Loop',
                   description: event.action,
                   statusBadge: isHoneypot ? 'HONEYPOT TRIP' : event.status,
-                  type: 'error' as const,
+                  type: 'error',
                   isHoneypot: isHoneypot,
                   tamperLockSignature: event.tamper_lock_signature
                 }
