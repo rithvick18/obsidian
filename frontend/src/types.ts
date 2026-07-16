@@ -17,6 +17,11 @@ export interface Incident {
   impactedEntity: string;
   assignee: string;
   status: 'Active' | 'Mitigated' | 'Investigating';
+  isHoneypot?: boolean;
+  tamperLockSignature?: string;
+  riskFactors?: { factor: string; delta: number }[];
+  primaryOperator?: string;
+  secondaryApprover?: string;
   attackChain: {
     node1: string;
     node2: string;
@@ -28,6 +33,8 @@ export interface Incident {
     description: string;
     statusBadge?: string;
     type?: 'info' | 'warning' | 'error' | 'success';
+    isHoneypot?: boolean;
+    tamperLockSignature?: string;
   }[];
 }
 
@@ -46,6 +53,9 @@ export interface PrivilegedSession {
   logs: string[];
   typingCadence: number;
   commandIntention: number;
+  isHoneypot?: boolean;
+  tamperLockSignature?: string;
+  riskFactors?: { factor: string; delta: number }[];
 }
 
 export interface AuditEvent {
@@ -86,6 +96,8 @@ export interface RiskProfile {
     sourceIp: string;
     riskDelta: string;
     severity: 'error' | 'warning' | 'success';
+    isHoneypot?: boolean;
+    tamperLockSignature?: string;
   }[];
 }
 

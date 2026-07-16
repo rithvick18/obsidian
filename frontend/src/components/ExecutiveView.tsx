@@ -128,7 +128,7 @@ export default function ExecutiveView() {
             </div>
 
             {/* Ingress stats bar below ring */}
-            <div className="mt-10 glass-panel px-8 py-3 rounded-full border border-primary/20 flex gap-8 items-center bg-surface-container-lowest/80 backdrop-blur-md">
+            <div className="mt-10 glass-panel px-8 py-3 rounded-full border border-primary/20 flex gap-8 items-center bg-surface-container-lowest/80 backdrop-blur-md overflow-x-auto">
               <div className="text-center">
                 <div className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Sessions Monitored</div>
                 <div className="font-headline-sm text-primary font-bold text-lg">{systemStatus?.sessions_monitored ?? '1,240'}</div>
@@ -142,6 +142,11 @@ export default function ExecutiveView() {
               <div className="text-center">
                 <div className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Threats Deflected</div>
                 <div className="font-headline-sm text-secondary font-bold text-lg">{systemStatus?.anomalies_deflected ?? '821'}</div>
+              </div>
+              <div className="w-px h-8 bg-outline-variant"></div>
+              <div className="text-center">
+                <div className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Canary Traps Active</div>
+                <div className="font-headline-sm text-amber-400 font-bold text-lg">{systemStatus?.honeypot_lures_active ?? '14'}</div>
               </div>
             </div>
           </div>

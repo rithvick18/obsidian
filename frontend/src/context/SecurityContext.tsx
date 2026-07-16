@@ -7,6 +7,7 @@ interface SystemStatus {
   sessions_monitored: number;
   anomalies_deflected: number;
   vault_status: string;
+  honeypot_lures_active?: number;
   uptime_seconds: number;
   active_ws_clients: number;
   rotation_log_size: number;
@@ -22,17 +23,23 @@ interface SecurityContextType {
   generationLogs: string[];
   isGeneratingKey: boolean;
   isConnected: boolean;
-  forceRotateUser: (userId: string) => Promise<boolean>;
-  isolateHost: (entityName: string, incidentId: string) => void;
+  forceRotateUser: (userId: string, actionType?: string, secondaryApprover?: string) => Promise<boolean>;
+  isolateHost: (entityName: string, incidentId: string, secondaryApprover?: string) => void;
   mitigateIncidentDirect: (incidentId: string) => void;
-  terminateSession: (sessionId: string) => void;
+  terminateSession: (sessionId: string, secondaryApprover?: string) => void;
   flagSession: (sessionId: string) => void;
   runComplianceScan: () => void;
   complianceScanning: boolean;
   auditScore: number;
   auditEvents: AuditEvent[];
-  generatePqcKey: () => void;
+  generatePqcKey: (secondaryApprover?: string) => void;
   sendCopilotMessage: (message: string) => Promise<string>;
+  dualControlModalOpen: boolean;
+  dualControlActionType: string;
+  dualControlTargetEntity: string;
+  openDualControlModal: (actionType: string, targetEntity: string, callback: (approver: string) => void) => void;
+  closeDualControlModal: () => void;
+  confirmDualControlAction: (approver: string) => void;
 }
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
@@ -297,6 +304,32 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ]);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+
+  // Dual-Control Modal state
+  const [dualControlModalOpen, setDualControlModalOpen] = useState(false);
+  const [dualControlActionType, setDualControlActionType] = useState('FORCE_ROTATE');
+  const [dualControlTargetEntity, setDualControlTargetEntity] = useState('');
+  const [dualControlCallback, setDualControlCallback] = useState<((approver: string) => void) | null>(null);
+
+  const openDualControlModal = useCallback((actionType: string, targetEntity: string, callback: (approver: string) => void) => {
+    setDualControlActionType(actionType);
+    setDualControlTargetEntity(targetEntity);
+    setDualControlCallback(() => callback);
+    setDualControlModalOpen(true);
+  }, []);
+
+  const closeDualControlModal = useCallback(() => {
+    setDualControlModalOpen(false);
+    setDualControlCallback(null);
+  }, []);
+
+  const confirmDualControlAction = useCallback((approver: string) => {
+    if (dualControlCallback) {
+      dualControlCallback(approver);
+    }
+    setDualControlModalOpen(false);
+    setDualControlCallback(null);
+  }, [dualControlCallback]);
   
   // Compliance ratings state
   const [complianceScanning, setComplianceScanning] = useState(false);
@@ -382,8 +415,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       second: '2-digit'
     });
 
-    const isAnomaly = event.risk_score > 75 || !!event.threat_classification;
-    const isControlEvent = event.threat_classification === 'OPERATOR OVERRIDE';
+    const isAnomaly = event.risk_score > 75 || !!event.threat_classification || event.is_honeypot;
+    const isControlEvent = event.threat_classification && event.threat_classification.includes('OPERATOR OVERRIDE');
+    const isHoneypot = event.is_honeypot || event.risk_score === 100 || (event.threat_classification && event.threat_classification.includes('HONEYPOT'));
 
     // 1. Sync System Status Counters incrementally
     setSystemStatus((prev) => {
@@ -405,12 +439,14 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const existingIndex = prevSessions.findIndex((s) => s.user === event.user_id);
       
       // Compute static assets for profiles
-      const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : '10.0.12.3';
-      const device = event.user_id === 's.murphy.admin' ? 'Workstation-SM' : event.user_id === 'v.patel.contractor' ? 'Contractor-Laptop' : 'Root-Service-Acct';
+      const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : event.user_id === 'c.vance.intern' ? '172.16.4.19' : '10.0.12.3';
+      const device = event.user_id === 's.murphy.admin' ? 'Workstation-SM' : event.user_id === 'v.patel.contractor' ? 'Contractor-Laptop' : event.user_id === 'c.vance.intern' ? 'Helpdesk-Terminal-04' : 'Root-Service-Acct';
       const resourceType = event.user_id === 'compromised.root.node' ? 'key' : event.user_id === 'v.patel.contractor' ? 'database' : 'cluster';
-      const resource = event.user_id === 'compromised.root.node' ? 'OBSIDIAN-VAULT-PRIMARY' : event.user_id === 'v.patel.contractor' ? 'SV-PROD-DB-02' : 'IT-COLO-CLUSTER-01';
+      const resource = event.user_id === 'compromised.root.node' ? 'OBSIDIAN-VAULT-PRIMARY' : event.user_id === 'v.patel.contractor' ? 'SV-PROD-DB-02' : event.user_id === 'c.vance.intern' ? 'db_admin.shadow_vault_backup' : 'IT-COLO-CLUSTER-01';
 
-      const logText = isAnomaly 
+      const logText = isHoneypot
+        ? `[🍯 HONEYPOT TRIP] ${event.action} | Deterministic IoC breached!`
+        : isAnomaly 
         ? `[ALERT] ${event.action} | Threat detected: ${event.threat_classification || 'Anomaly'}`
         : `[OK] ${event.action}`;
 
@@ -418,16 +454,22 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return prevSessions.map((sess, idx) => {
           if (idx === existingIndex) {
             let updatedLogs = [...sess.logs, `[${timestampStr}] ${logText}`];
-            if (event.status === 'REVOKED & ROTATED') {
+            if (event.status === 'REVOKED & ROTATED' || event.status === 'CRITICAL HONEYPOT BREACH') {
               updatedLogs.push(`[${timestampStr}] PQC ROTATION KEY ATTACHED.`);
+              if (isHoneypot) {
+                updatedLogs.push(`[${timestampStr}] 🔒 TAMPER-EVIDENT PQC LOCK: ${event.tamper_lock_signature || 'mldsa_root_honeypot_lock_active'}`);
+              }
               updatedLogs.push(`[${timestampStr}] Severing session connections. Returning Code: 137.`);
             }
 
             return {
               ...sess,
-              riskIndex: event.risk_score || sess.riskIndex,
-              riskText: (event.risk_score > 75 ? 'CRITICAL' : event.risk_score > 25 ? 'MED' : 'LOW') as any,
-              status: event.status === 'REVOKED & ROTATED' ? 'Terminated' : (event.risk_score > 75 ? 'Flagged' : 'Active') as any,
+              riskIndex: isHoneypot ? 100 : (event.risk_score || sess.riskIndex),
+              riskText: (isHoneypot || event.risk_score > 75 ? 'CRITICAL' : event.risk_score > 25 ? 'MED' : 'LOW') as any,
+              status: (event.status === 'REVOKED & ROTATED' || event.status === 'CRITICAL HONEYPOT BREACH') ? 'Terminated' : (event.risk_score > 75 ? 'Flagged' : 'Active') as any,
+              isHoneypot: isHoneypot || sess.isHoneypot,
+              tamperLockSignature: event.tamper_lock_signature || sess.tamperLockSignature,
+              riskFactors: event.risk_factors || sess.riskFactors,
               logs: updatedLogs.slice(-15) // Keep last 15 entries
             };
           }
@@ -445,19 +487,22 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             resource: resource,
             resourceType: resourceType as any,
             duration: '1m',
-            riskIndex: event.risk_score || 10,
-            riskText: (event.risk_score > 75 ? 'CRITICAL' : event.risk_score > 25 ? 'MED' : 'LOW') as any,
-            status: event.status === 'REVOKED & ROTATED' ? 'Terminated' : (event.risk_score > 75 ? 'Flagged' : 'Active') as any,
+            riskIndex: isHoneypot ? 100 : (event.risk_score || 10),
+            riskText: (isHoneypot || event.risk_score > 75 ? 'CRITICAL' : event.risk_score > 25 ? 'MED' : 'LOW') as any,
+            status: (event.status === 'REVOKED & ROTATED' || event.status === 'CRITICAL HONEYPOT BREACH') ? 'Terminated' : (event.risk_score > 75 ? 'Flagged' : 'Active') as any,
             logs: [`[${timestampStr}] [SESSION START] Pipeline initialized`, `[${timestampStr}] ${logText}`],
             typingCadence: Math.floor(Math.random() * 40) + 50,
-            commandIntention: Math.floor(Math.random() * 40) + 50
+            commandIntention: Math.floor(Math.random() * 40) + 50,
+            isHoneypot: isHoneypot,
+            tamperLockSignature: event.tamper_lock_signature,
+            riskFactors: event.risk_factors
           }
         ];
       }
     });
 
     // 3. Process Incidents
-    if (isAnomaly) {
+    if (isAnomaly || isHoneypot) {
       setIncidents((prev) => {
         const incId = `INC-${(event.event_id || '').substring(0, 4).toUpperCase() || Math.floor(Math.random() * 9000 + 1000)}`;
         const existingInc = prev.find((inc) => inc.impactedEntity === event.user_id && inc.status !== 'Mitigated');
@@ -468,10 +513,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               const newLogs = [
                 {
                   time: timestampStr,
-                  title: isControlEvent ? 'Operator Overrode Credentials' : 'Anomaly Refinement Loop',
+                  title: isHoneypot ? 'Canary Honeypot Breached' : isControlEvent ? 'Operator Overrode Credentials' : 'Anomaly Refinement Loop',
                   description: event.action,
-                  statusBadge: event.status,
-                  type: 'error' as const
+                  statusBadge: isHoneypot ? 'HONEYPOT TRIP' : event.status,
+                  type: 'error' as const,
+                  isHoneypot: isHoneypot,
+                  tamperLockSignature: event.tamper_lock_signature
                 }
               ];
               if (event.rotation) {
@@ -479,29 +526,34 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   time: timestampStr,
                   title: 'Post-Quantum Lattice Re-Keying Complete',
                   description: `Credential encapsulation key (ML-KEM-1024): ${event.rotation.pqc_keys.ml_kem_1024.shared_secret_hex.substring(0, 18)}...`,
-                  statusBadge: 'PQC_ROTATED',
+                  statusBadge: 'SECURE_PQC',
                   type: 'success' as const
                 });
               }
               return {
                 ...inc,
-                status: event.status === 'REVOKED & ROTATED' ? 'Mitigated' : inc.status,
+                status: (event.status === 'REVOKED & ROTATED' || event.status === 'CRITICAL HONEYPOT BREACH') ? 'Mitigated' : inc.status,
+                isHoneypot: isHoneypot || inc.isHoneypot,
+                tamperLockSignature: event.tamper_lock_signature || inc.tamperLockSignature,
                 timeline: [...newLogs, ...inc.timeline]
               };
             }
             return inc;
           });
         } else {
-          const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : '10.0.12.3';
+          const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : event.user_id === 'c.vance.intern' ? '172.16.4.19' : '10.0.12.3';
           const newInc: Incident = {
             id: incId,
-            title: isControlEvent ? 'Operator-Initiated Security Override' : `Active Threat: ${event.threat_classification || 'Insider Anomaly'}`,
+            title: isHoneypot ? `CRITICAL HONEYPOT BREACH: ${event.user_id}` : isControlEvent ? 'Operator-Initiated Security Override' : `Active Threat: ${event.threat_classification || 'Insider Anomaly'}`,
             timeAgo: 'Just now',
-            severity: event.risk_score > 90 ? 'critical' : 'high',
-            tags: isControlEvent ? ['Manual Revocation', 'Vault Rotation'] : ['Anomaly', event.role || 'Insider', 'PQC Shield'],
+            severity: isHoneypot || event.risk_score > 90 ? 'critical' : 'high',
+            tags: isHoneypot ? ['Canary Honeypot', 'Tamper Lock', 'High-Fidelity IoC'] : isControlEvent ? ['Manual Revocation', 'Vault Rotation'] : ['Anomaly', event.role || 'Insider', 'PQC Shield'],
             impactedEntity: event.user_id || 'System Node',
             assignee: 'SOC_Operator_04',
-            status: event.status === 'REVOKED & ROTATED' ? 'Mitigated' : 'Active',
+            status: (event.status === 'REVOKED & ROTATED' || event.status === 'CRITICAL HONEYPOT BREACH') ? 'Mitigated' : 'Active',
+            isHoneypot: isHoneypot,
+            tamperLockSignature: event.tamper_lock_signature,
+            riskFactors: event.risk_factors,
             attackChain: {
               node1: ip,
               node2: event.role || 'Internal Role',
@@ -510,10 +562,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             timeline: [
               {
                 time: timestampStr,
-                title: isControlEvent ? 'Operator Override Issued' : 'High Risk Event Logged',
+                title: isHoneypot ? 'Canary Trap Tripped (Zero-Tolerance)' : isControlEvent ? 'Operator Override Issued' : 'High Risk Event Logged',
                 description: event.action || 'Risk threshold breached by privileged system credentials.',
-                statusBadge: event.status || 'ALERT',
-                type: 'error'
+                statusBadge: isHoneypot ? 'HONEYPOT TRIP' : (event.status || 'ALERT'),
+                type: 'error',
+                isHoneypot: isHoneypot,
+                tamperLockSignature: event.tamper_lock_signature
               }
             ]
           };
@@ -537,22 +591,24 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setProfiles((prevProfiles) => {
       return prevProfiles.map((prof) => {
         if (prof.name === event.user_id) {
-          const delta = event.risk_score > 75 ? `+${event.risk_score}` : '0';
-          const severity = event.risk_score > 75 ? 'error' : event.risk_score > 25 ? 'warning' : 'success';
+          const delta = isHoneypot ? '+100' : event.risk_score > 75 ? `+${event.risk_score}` : '0';
+          const severity = isHoneypot || event.risk_score > 75 ? 'error' : event.risk_score > 25 ? 'warning' : 'success';
           
           const newTelemetry = {
             timestamp: timestampStr,
-            eventType: isAnomaly ? (event.threat_classification || 'Anomaly Trigger') : 'Operational Log',
+            eventType: isHoneypot ? 'Canary Honeypot Trip' : isAnomaly ? (event.threat_classification || 'Anomaly Trigger') : 'Operational Log',
             path: event.action.substring(0, 30),
             sourceIp: prof.name === 's.murphy.admin' ? '192.168.1.50' : prof.name === 'v.patel.contractor' ? '185.12.99.102' : '10.0.12.3',
             riskDelta: delta,
-            severity: severity as any
+            severity: severity as any,
+            isHoneypot: isHoneypot,
+            tamperLockSignature: event.tamper_lock_signature
           };
 
-          const newScore = Math.max(10, 100 - (event.risk_score || 0));
+          const newScore = isHoneypot ? 0 : Math.max(10, 100 - (event.risk_score || 0));
 
           const newRadar = { ...prof.radar };
-          if (event.risk_score > 75) {
+          if (isHoneypot || event.risk_score > 75) {
             newRadar.behaviorScore = Math.min(100, newRadar.behaviorScore + 10);
             newRadar.accessPattern = Math.min(100, newRadar.accessPattern + 12);
           }
@@ -569,7 +625,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     // 5. Append attack map signals
-    if (isAnomaly) {
+    if (isAnomaly || isHoneypot) {
       setSignals((prev) => {
         const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : '10.0.12.3';
         const location = event.user_id === 'v.patel.contractor' ? 'Kiev, UA' : event.user_id === 'compromised.root.node' ? 'Beijing, CN' : 'Frankfurt, DE';
@@ -578,37 +634,52 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           id: Date.now() + Math.random(),
           origin: `${location} (${ip})`,
           target: event.action.substring(0, 25),
-          severity: event.risk_score > 90 ? 'critical' : 'high',
-          rate: event.risk_score > 85 ? 'Bulk Access' : 'Anomaly Flow'
+          severity: isHoneypot || event.risk_score > 90 ? 'critical' : 'high',
+          rate: isHoneypot ? 'Honeypot Trip' : event.risk_score > 85 ? 'Bulk Access' : 'Anomaly Flow'
         };
         return [newSig, ...prev.slice(0, 5)];
       });
     }
 
-    // 6. Push PQC details to Quantum Center logs
+    // 6. Push PQC details to Quantum Center logs with smooth random float latencies
     if (event.rotation) {
       const keys = event.rotation.pqc_keys;
+      const kemLatency = (1.2 + Math.random() * 1.3).toFixed(2);
+      const dsaLatency = (1.4 + Math.random() * 1.1).toFixed(2);
       setGenerationLogs((prev) => [
         `[${timestampStr}] [ROTATION TRIGGERED] Automatic post-quantum token rotation.`,
-        `[${timestampStr}] Algorithm: ${keys.ml_kem_1024.algorithm} (Purpose: ${keys.ml_kem_1024.purpose})`,
+        `[${timestampStr}] Algorithm: ${keys.ml_kem_1024.algorithm} (Purpose: ${keys.ml_kem_1024.purpose}) // ML-KEM Key Agreement established in ${kemLatency}ms (Security Level: NIST Category 5)`,
         `[${timestampStr}] ML-KEM-1024 Public Key: ${keys.ml_kem_1024.public_key_fingerprint}`,
         `[${timestampStr}] ML-KEM-1024 Shared Secret: 0x${keys.ml_kem_1024.shared_secret_hex}`,
-        `[${timestampStr}] Algorithm: ${keys.ml_dsa_85.algorithm} (Purpose: ${keys.ml_dsa_85.purpose})`,
+        `[${timestampStr}] Algorithm: ${keys.ml_dsa_85.algorithm} (Purpose: ${keys.ml_dsa_85.purpose}) // ML-DSA-85 Digital Signature signed in ${dsaLatency}ms (Security Level: NIST Category 5)`,
         `[${timestampStr}] ML-DSA-85 Digital Signature Excerpt: ${keys.ml_dsa_85.signature_hex.substring(0, 32)}...`,
+        ...(isHoneypot ? [`[${timestampStr}] 🔒 TAMPER-EVIDENT PQC LOCK: ${event.tamper_lock_signature}`] : []),
         `[${timestampStr}] [STATUS] Cryptographic credentials safely rotated and distributed across target subnets.`,
         ...prev
       ]);
     }
   };
 
-  const forceRotateUser = async (userId: string): Promise<boolean> => {
+  const forceRotateUser = async (userId: string, actionType: string = 'FORCE_ROTATE', secondaryApprover?: string): Promise<boolean> => {
+    if (!secondaryApprover) {
+      openDualControlModal(actionType, userId, (approver) => {
+        forceRotateUser(userId, actionType, approver);
+      });
+      return false;
+    }
+
     try {
       const res = await fetch('http://localhost:8000/api/v1/mitigate/force-rotate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ user_id: userId })
+        body: JSON.stringify({
+          user_id: userId,
+          action_type: actionType,
+          primary_operator: 'SOC_Operator_04',
+          secondary_approver: secondaryApprover
+        })
       });
       if (res.ok) {
         fetchSystemStatus();
@@ -620,8 +691,15 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return false;
   };
 
-  const isolateHost = (entityName: string, incidentId: string) => {
-    forceRotateUser(entityName);
+  const isolateHost = (entityName: string, incidentId: string, secondaryApprover?: string) => {
+    if (!secondaryApprover) {
+      openDualControlModal('ISOLATE_HOST', entityName, (approver) => {
+        isolateHost(entityName, incidentId, approver);
+      });
+      return;
+    }
+
+    forceRotateUser(entityName, 'ISOLATE_HOST', secondaryApprover);
 
     setIncidents((prev) =>
       prev.map((inc) => {
@@ -632,9 +710,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const updatedTimeline = [
             {
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              title: 'Manual Action: Host Isolated',
-              description: `Operator triggered virtual containment isolation block on host: ${entityName}. Outbound subnets locked.`,
-              statusBadge: 'MANUAL ISO',
+              title: `Manual Action: Host Isolated (${secondaryApprover})`,
+              description: `Operator triggered virtual containment isolation block on host: ${entityName} with Four-Eyes authorization. Outbound subnets locked.`,
+              statusBadge: 'CONTAINED_ISOLATED',
               type: 'success' as const
             },
             ...inc.timeline
@@ -643,7 +721,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return {
             ...inc,
             status: 'Mitigated',
-            timeline: updatedTimeline
+            timeline: updatedTimeline,
+            primaryOperator: 'SOC_Operator_04',
+            secondaryApprover: secondaryApprover
           };
         }
         return inc;
@@ -665,19 +745,29 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
-  const terminateSession = (sessionId: string) => {
+  const terminateSession = (sessionId: string, secondaryApprover?: string) => {
+    const targetSession = sessions.find((s) => s.id === sessionId);
+    const userId = targetSession?.user || sessionId;
+
+    if (!secondaryApprover) {
+      openDualControlModal('TERMINATE_SESSION', userId, (approver) => {
+        terminateSession(sessionId, approver);
+      });
+      return;
+    }
+
     setSessions((prevSessions) =>
       prevSessions.map((sess) => {
         if (sess.id === sessionId) {
           if (sess.status === 'Terminated') return sess;
           
-          forceRotateUser(sess.user);
+          forceRotateUser(sess.user, 'TERMINATE_SESSION', secondaryApprover);
 
           const updatedLogs = [
             ...sess.logs,
             '-------------------------------------------------------',
-            `[ADMIN LOCKOUT TRIGGERED AT ${new Date().toLocaleTimeString()}]`,
-            'FATAL: Session forcefully severed by operator commands.',
+            `[ADMIN LOCKOUT AND FOUR-EYES SIGN-OFF AT ${new Date().toLocaleTimeString()}]`,
+            `FATAL: Session forcefully severed by operator with authorization: ${secondaryApprover}.`,
             'Connection severed. Status code: 137'
           ];
           return {
@@ -725,18 +815,28 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, 1500);
   };
 
-  const generatePqcKey = () => {
+  const generatePqcKey = (secondaryApprover?: string) => {
+    if (!secondaryApprover) {
+      openDualControlModal('GENERATE_KEY', 'Enterprise Subnets & HSM Nodes', (approver) => {
+        generatePqcKey(approver);
+      });
+      return;
+    }
+
     setIsGeneratingKey(true);
+    const kemLatency = (1.2 + Math.random() * 1.3).toFixed(2);
+    const dsaLatency = (1.4 + Math.random() * 1.1).toFixed(2);
     const newLogs = [
-      `[INIT] Triggering manual lattice key audit...`,
-      `[ML-KEM] Preparing module-lattice dimensions...`,
-      `[SYSTEM] Invoking uvicorn manual force-rotate API...`
+      `[INIT] Triggering manual lattice key audit with Four-Eyes authorization (${secondaryApprover})...`,
+      `[ML-KEM] Preparing module-lattice dimensions... // ML-KEM Key Agreement established in ${kemLatency}ms (Security Level: NIST Category 5)`,
+      `[ML-DSA] Generating FIPS 204 digital signature structures... // ML-DSA-85 Digital Signature signed in ${dsaLatency}ms (Security Level: NIST Category 5)`,
+      `[SYSTEM] Invoking uvicorn manual force-rotate API with unified action_type: GENERATE_KEY...`
     ];
 
     setGenerationLogs((prev) => [...newLogs, ...prev]);
 
     setTimeout(() => {
-      forceRotateUser('s.murphy.admin');
+      forceRotateUser('s.murphy.admin', 'GENERATE_KEY', secondaryApprover);
       setIsGeneratingKey(false);
     }, 1200);
   };
@@ -782,7 +882,13 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         auditScore,
         auditEvents,
         generatePqcKey,
-        sendCopilotMessage
+        sendCopilotMessage,
+        dualControlModalOpen,
+        dualControlActionType,
+        dualControlTargetEntity,
+        openDualControlModal,
+        closeDualControlModal,
+        confirmDualControlAction
       }}
     >
       {children}

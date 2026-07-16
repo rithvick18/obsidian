@@ -6,7 +6,7 @@ Obsidian XDR combines real-time streaming telemetry, identity risk analytics, po
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 Obsidian XDR offers eight specialized tabs for complete security operations:
 
@@ -21,7 +21,7 @@ Obsidian XDR offers eight specialized tabs for complete security operations:
 
 ---
 
-## 🛠️ Architecture
+## Architecture
 
 Obsidian XDR is built as a split client-server architecture:
 - **Backend ([backend/main.py](../backend/main.py))**: A single-file FastAPI server that exposes REST API control endpoints and broadcasts continuous system event streams via WebSockets (`ws://localhost:8000/ws/logs`).
@@ -29,7 +29,7 @@ Obsidian XDR is built as a split client-server architecture:
 
 ---
 
-## 💻 Getting Started (Run Locally)
+## Getting Started (Run Locally)
 
 To run the full Obsidian XDR application locally, you will need to start both the Python backend service and the Vite React frontend.
 

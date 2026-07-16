@@ -44,7 +44,7 @@ const defaultProfile: RiskProfile = {
 import { useSecurity } from '../context/SecurityContext';
 
 export default function RiskView() {
-  const { profiles } = useSecurity();
+  const { profiles, forceRotateUser } = useSecurity();
   const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
   const profile: RiskProfile = profiles[selectedProfileIndex] || defaultProfile;
 
@@ -165,6 +165,12 @@ export default function RiskView() {
               <p className="text-[11px] text-on-surface-variant mt-2 font-sans">
                 {profile.trustScore < 50 ? 'ACTION REQUIRED: High anomalies detected.' : 'Compliant profile pattern verified.'}
               </p>
+              <button
+                onClick={() => forceRotateUser(profile.name)}
+                className="mt-3 w-full py-2 bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary rounded text-xs font-mono uppercase tracking-wider font-bold transition-all cursor-pointer"
+              >
+                Force Rotate Credentials
+              </button>
             </div>
           </div>
 

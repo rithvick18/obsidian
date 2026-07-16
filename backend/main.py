@@ -53,7 +53,19 @@ _metrics: dict[str, Any] = {
     "sessions_monitored": 0,
     "anomalies_deflected": 0,
     "vault_status": "Armed",
+    "honeypot_lures_active": 4,
 }
+
+# Contextual Canary Honeypots
+HONEYPOT_RESOURCES: set[str] = {
+    "db_admin.shadow_vault_backup",
+    "core.root.shadow_key_vault",
+    "pam_auth.shadow_master_key",
+    "swift.gateway.shadow_channel",
+}
+
+# Velocity tracking for Graph-Based Role Distance
+_user_call_timestamps: dict[str, list[float]] = {}
 
 # Audit trail for every rotation (PQC or manual)
 _rotation_log: list[dict[str, Any]] = []
@@ -95,6 +107,14 @@ PROFILES: list[dict[str, Any]] = [
         "action": "Unauthorized system configuration edit — privilege escalation attempt",
         "risk_range": (92, 96),
         "base_status": "CRITICAL",
+    },
+    {
+        "user_id": "c.vance.intern",
+        "role": "Helpdesk Intern",
+        "department": "Tier 1 Support",
+        "action": "SELECT * FROM db_admin.shadow_vault_backup — Canary Honeypot Probe",
+        "risk_range": (15, 25),
+        "base_status": "ALERT",
     },
 ]
 
@@ -170,6 +190,51 @@ async def _broadcast(payload: str) -> None:
     _ws_clients.difference_update(disconnected)
 
 
+def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_score: int) -> tuple[int, list[dict[str, Any]], bool, str | None]:
+    """
+    Calculate dynamic graph-based role distance risk score & check for honeypot trips.
+    Returns: (final_risk_score, risk_factors_list, is_honeypot, tamper_lock_signature)
+    """
+    now = time.time()
+    # Check honeypot trip first (bypasses threshold scoring -> instantly 100)
+    is_honeypot = any(h in action for h in HONEYPOT_RESOURCES) or "shadow_vault_backup" in action or "canary honeypot" in action.lower()
+    if is_honeypot:
+        lock_hash = hashlib.sha3_256(f"{user_id}:{now}".encode()).hexdigest()[:24]
+        tamper_sig = f"mldsa_root_honeypot_lock_{lock_hash}"
+        factors = [
+            {"factor": "Canary Honeypot Probe (db_admin.shadow_vault_backup)", "delta": 100},
+            {"factor": "Tamper-Evident ML-DSA Root Signature Locked", "delta": 0},
+        ]
+        return 100, factors, True, tamper_sig
+
+    risk_factors: list[dict[str, Any]] = []
+    total_score = base_score
+
+    # 1. Time Delta: Is the action happening outside standard operational hours (07:00 - 19:00 UTC)?
+    current_hour = datetime.now(timezone.utc).hour
+    if current_hour < 7 or current_hour > 19 or "contractor" in role.lower():
+        total_score += 15
+        risk_factors.append({"factor": "Time Delta: Outside standard operational hours (+15)", "delta": 15})
+
+    # 2. Role Divergence: Is a Helpdesk role / Tier 1 / Contractor accessing Core SWIFT Gateways or critical asset?
+    if any(r in role.lower() for r in ("helpdesk", "contractor", "intern", "tier 1")) and any(
+        k in action.lower() for k in ("swift", "gateways", "pii", "root", "pam", "config", "mass query", "escalation")
+    ):
+        total_score += 40
+        risk_factors.append({"factor": "Role Divergence: Unauthorized cross-boundary asset access (+40)", "delta": 40})
+
+    # 3. Velocity Spike: Has this user initiated >3 high-impact system calls in the last 2 seconds?
+    timestamps = _user_call_timestamps.setdefault(user_id, [])
+    timestamps[:] = [ts for ts in timestamps if now - ts <= 2.0]
+    timestamps.append(now)
+    if len(timestamps) > 3 or ("mass query" in action.lower() and random.random() < 0.4):
+        total_score += 25
+        risk_factors.append({"factor": "Velocity Spike: >3 high-impact system calls in 2.0s (+25)", "delta": 25})
+
+    final_score = min(100, total_score)
+    return final_score, risk_factors, False, None
+
+
 # ---------------------------------------------------------------------------
 # Microservice 1 — Ingestion & Anomaly Engine
 # ---------------------------------------------------------------------------
@@ -184,7 +249,13 @@ async def _ingestion_loop() -> None:
     cycle_index = 0
     while True:
         profile = PROFILES[cycle_index % len(PROFILES)]
-        risk_score = random.randint(*profile["risk_range"])
+        base_score = random.randint(*profile["risk_range"])
+        dynamic_score, factors, is_honeypot, tamper_sig = _calculate_role_distance_risk(
+            user_id=profile["user_id"],
+            role=profile["role"],
+            action=profile["action"],
+            base_score=base_score,
+        )
 
         event: dict[str, Any] = {
             "event_id": str(uuid4()),
@@ -193,14 +264,18 @@ async def _ingestion_loop() -> None:
             "role": profile["role"],
             "department": profile["department"],
             "action": profile["action"],
-            "risk_score": risk_score,
-            "status": profile["base_status"],
+            "risk_score": dynamic_score,
+            "status": "CRITICAL HONEYPOT BREACH" if is_honeypot else profile["base_status"],
+            "risk_factors": factors,
+            "is_honeypot": is_honeypot,
         }
+        if tamper_sig:
+            event["tamper_lock_signature"] = tamper_sig
 
         _metrics["sessions_monitored"] += 1
 
-        # If risk exceeds threshold, hand off to the Risk Evaluator
-        if risk_score > 75:
+        # If risk exceeds threshold or honeypot tripped, hand off to the Risk Evaluator
+        if dynamic_score > 75 or is_honeypot:
             await _anomaly_queue.put(event)
 
         await _broadcast(json.dumps(event))
@@ -217,23 +292,27 @@ async def _ingestion_loop() -> None:
 async def _risk_evaluator_loop() -> None:
     """
     Consume events from the anomaly queue. When an event's risk score
-    exceeds 75 it is flagged as an insider threat and a PQC token rotation
-    is triggered.  The enriched event is then re-broadcast to all WS clients.
+    exceeds 75 or hits a canary honeypot it is flagged as an insider threat
+    and a PQC token rotation is triggered.
     """
     while True:
         event = await _anomaly_queue.get()
 
-        # Flag as insider threat
-        event["threat_classification"] = "INSIDER THREAT — ACTIVE"
-        event["mitigation"] = "Automated PQC token rotation initiated"
+        is_honeypot = event.get("is_honeypot", False)
+        if is_honeypot:
+            event["threat_classification"] = "100 [CRITICAL HONEYPOT BREACH]"
+            event["mitigation"] = "Tamper-evident PQC signature locked & immediate quarantine initiated"
+        else:
+            event["threat_classification"] = "INSIDER THREAT — ACTIVE"
+            event["mitigation"] = "Automated PQC token rotation & containment initiated"
 
         # Perform simulated rotation
         rotation = _build_rotation_record(
             user_id=event["user_id"],
-            trigger="auto:risk_threshold_exceeded",
+            trigger="auto:honeypot_breach" if is_honeypot else "auto:risk_threshold_exceeded",
         )
         event["rotation"] = rotation
-        event["status"] = "REVOKED & ROTATED"
+        event["status"] = "CRITICAL HONEYPOT BREACH" if is_honeypot else "REVOKED & ROTATED"
 
         # Broadcast the enriched threat event
         await _broadcast(json.dumps(event))
@@ -290,6 +369,7 @@ async def system_status() -> dict[str, Any]:
         "sessions_monitored": _metrics["sessions_monitored"],
         "anomalies_deflected": _metrics["anomalies_deflected"],
         "vault_status": _metrics["vault_status"],
+        "honeypot_lures_active": _metrics["honeypot_lures_active"],
         "uptime_seconds": round(time.time() - _boot_time, 2),
         "active_ws_clients": len(_ws_clients),
         "rotation_log_size": len(_rotation_log),
@@ -297,43 +377,72 @@ async def system_status() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# REST Endpoint — Manual Force-Rotate
+# REST Endpoint — Manual Force-Rotate & Dual-Control Mitigation
 # ---------------------------------------------------------------------------
 
 
 class ForceRotateRequest(BaseModel):
-    """Request body for the manual force-rotate endpoint."""
+    """Request body for the unified manual force-rotate & dual-control mitigation endpoint."""
     user_id: str
+    action_type: str = "FORCE_ROTATE"  # FORCE_ROTATE, ISOLATE_HOST, TERMINATE_SESSION, GENERATE_KEY
+    primary_operator: str = "SOC_Operator_04"
+    secondary_approver: str | None = None
 
 
 @app.post("/api/v1/mitigate/force-rotate")
 async def force_rotate(body: ForceRotateRequest) -> dict[str, Any]:
     """
-    Manually trigger a PQC token rotation for a specific user.
-    This simulates an operator-initiated credential revocation and
-    quantum-safe re-keying.
+    Unified dual-control mitigation endpoint.
+    Enforces the Four-Eyes Principle by requiring valid sign-off from both
+    the primary operator and a secondary security approver.
+    Handles FORCE_ROTATE, ISOLATE_HOST, TERMINATE_SESSION, and GENERATE_KEY actions cleanly.
     """
+    if not body.secondary_approver or not body.secondary_approver.strip():
+        return {
+            "result": "error",
+            "message": "Dual-control authorization rejected: Secondary approver profile is required under the Four-Eyes Principle.",
+            "status_code": 403,
+        }
+
     rotation = _build_rotation_record(
         user_id=body.user_id,
-        trigger="manual:force_rotate",
+        trigger=f"manual:{body.action_type.lower()}_by_{body.primary_operator}_auth_{body.secondary_approver}",
     )
+
+    action_label = {
+        "FORCE_ROTATE": "Manual force-rotate & PQC rekeying executed",
+        "ISOLATE_HOST": "Virtual containment isolation block enforced on host",
+        "TERMINATE_SESSION": "Privileged session forcefully severed with Code 137",
+        "GENERATE_KEY": "Corporate lattice seed keys synchronized across subnets",
+    }.get(body.action_type, f"Action [{body.action_type}] executed")
+
+    status_label = {
+        "FORCE_ROTATE": "REVOKED & ROTATED",
+        "ISOLATE_HOST": "CONTAINED & ISOLATED",
+        "TERMINATE_SESSION": "TERMINATED (CODE 137)",
+        "GENERATE_KEY": "LATTICE_SYNCHRONIZED",
+    }.get(body.action_type, "REVOKED & ROTATED")
 
     # Also broadcast as a control-plane event over WebSocket
     control_event = {
         "event_id": str(uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": body.user_id,
-        "action": "Manual force-rotate executed by operator",
+        "action": f"{action_label} (Primary: {body.primary_operator} // Approver: {body.secondary_approver})",
         "risk_score": None,
-        "status": "REVOKED & ROTATED",
-        "threat_classification": "OPERATOR OVERRIDE",
+        "status": status_label,
+        "threat_classification": f"OPERATOR OVERRIDE [{body.action_type}] (Four-Eyes Sign-Off: {body.secondary_approver})",
+        "action_type": body.action_type,
+        "primary_operator": body.primary_operator,
+        "secondary_approver": body.secondary_approver,
         "rotation": rotation,
     }
     await _broadcast(json.dumps(control_event))
 
     return {
         "result": "success",
-        "message": f"Credentials for '{body.user_id}' revoked and rotated with PQC keys.",
+        "message": f"{action_label} for '{body.user_id}' with Four-Eyes authorization ({body.secondary_approver}).",
+        "action_type": body.action_type,
         "rotation": rotation,
     }
 

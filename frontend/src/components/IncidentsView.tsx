@@ -39,7 +39,7 @@ const defaultIncident: Incident = {
 import { useSecurity } from '../context/SecurityContext';
 
 export default function IncidentsView() {
-  const { incidents, isolateHost, mitigateIncidentDirect } = useSecurity();
+  const { incidents, isolateHost, mitigateIncidentDirect, forceRotateUser } = useSecurity();
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [isolationRunning, setIsolationRunning] = useState<string | null>(null);
 
@@ -160,6 +160,18 @@ export default function IncidentsView() {
             {/* Action Group */}
             <div className="flex flex-wrap gap-2.5 sm:self-center">
               <button
+                onClick={() => forceRotateUser(selectedIncident?.impactedEntity || '')}
+                disabled={selectedIncident?.status === 'Mitigated'}
+                className={`py-2 px-3.5 rounded text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  selectedIncident?.status === 'Mitigated'
+                    ? 'bg-outline-variant text-on-surface-variant cursor-not-allowed'
+                    : 'bg-primary/20 border border-primary/40 hover:bg-primary/30 text-primary'
+                }`}
+              >
+                <RotateCw size={13} />
+                Force Rotate
+              </button>
+              <button
                 onClick={() => handleIsolateHost(selectedIncident?.impactedEntity || '')}
                 disabled={isolationRunning !== null || selectedIncident?.status === 'Mitigated'}
                 className={`py-2 px-3.5 rounded text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -190,6 +202,22 @@ export default function IncidentsView() {
               )}
             </div>
           </div>
+
+          {/* Honeypot & Tamper Lock Banner if present */}
+          {selectedIncident?.isHoneypot && (
+            <div className="mb-6 p-4 rounded-xl bg-error/10 border-2 border-error/50 flex items-start gap-3">
+              <span className="text-2xl">🍯</span>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold text-error uppercase tracking-wider">Canary Honeypot Triggered & Tamper-Evident Lock Engaged</h4>
+                <p className="text-xs text-on-surface-variant mt-1">Zero-tolerance IoC tripped. ML-DSA signature baseline locked against root modification.</p>
+                {selectedIncident.tamperLockSignature && (
+                  <div className="mt-2 p-2 rounded bg-surface-container-lowest font-mono text-[10px] text-amber-300 break-all border border-outline-variant">
+                    LOCK SIG: {selectedIncident.tamperLockSignature}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Attack Chain Node Visualization */}
           <div className="mb-6">

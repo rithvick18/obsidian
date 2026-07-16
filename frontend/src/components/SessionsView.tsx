@@ -36,7 +36,7 @@ const defaultSession: PrivilegedSession = {
 import { useSecurity } from '../context/SecurityContext';
 
 export default function SessionsView() {
-  const { sessions, terminateSession, flagSession } = useSecurity();
+  const { sessions, terminateSession, flagSession, forceRotateUser } = useSecurity();
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
   const selectedSession = sessions.find(sess => sess.id === selectedSessionId) || sessions[0] || defaultSession;
@@ -145,11 +145,23 @@ export default function SessionsView() {
               </div>
 
               {/* Console Action buttons */}
-              <div className="flex gap-2 sm:self-center">
+              <div className="flex flex-wrap gap-2 sm:self-center">
+                <button 
+                  onClick={() => forceRotateUser(selectedSession.user)}
+                  disabled={selectedSession.status === 'Terminated'}
+                  className={`py-2 px-3 rounded text-xs font-mono uppercase font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedSession.status === 'Terminated'
+                      ? 'bg-outline-variant/10 text-on-surface-variant cursor-not-allowed'
+                      : 'bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30'
+                  }`}
+                >
+                  <RotateCw size={13} />
+                  Force Rotate
+                </button>
                 <button 
                   onClick={handleFlagSession}
                   disabled={selectedSession.status === 'Terminated' || selectedSession.status === 'Flagged'}
-                  className={`py-2 px-3 rounded text-xs font-mono uppercase font-bold transition-all ${
+                  className={`py-2 px-3 rounded text-xs font-mono uppercase font-bold transition-all cursor-pointer ${
                     selectedSession.status === 'Terminated' || selectedSession.status === 'Flagged'
                       ? 'bg-outline-variant/10 text-on-surface-variant cursor-not-allowed'
                       : 'bg-amber-500/20 text-amber-500 border border-amber-500/30 hover:bg-amber-500/30'
@@ -160,7 +172,7 @@ export default function SessionsView() {
                 <button 
                   onClick={handleTerminateSession}
                   disabled={selectedSession.status === 'Terminated'}
-                  className={`py-2 px-3 rounded text-xs font-mono uppercase font-bold transition-all ${
+                  className={`py-2 px-3 rounded text-xs font-mono uppercase font-bold transition-all cursor-pointer ${
                     selectedSession.status === 'Terminated'
                       ? 'bg-outline-variant/10 text-on-surface-variant cursor-not-allowed'
                       : 'bg-error hover:bg-error/80 text-white'
@@ -170,6 +182,22 @@ export default function SessionsView() {
                 </button>
               </div>
             </div>
+
+            {/* Honeypot & Tamper Lock Banner if present */}
+            {selectedSession.isHoneypot && (
+              <div className="mb-5 p-4 rounded-xl bg-error/10 border-2 border-error/50 flex items-start gap-3">
+                <span className="text-2xl">🍯</span>
+                <div className="flex-1">
+                  <h4 className="text-xs font-bold text-error uppercase tracking-wider">Canary Honeypot Session & Tamper Lock Engaged</h4>
+                  <p className="text-xs text-on-surface-variant mt-1">Session touched deterministic decoy resource. ML-DSA signature baseline locked.</p>
+                  {selectedSession.tamperLockSignature && (
+                    <div className="mt-2 p-2 rounded bg-surface-container-lowest font-mono text-[10px] text-amber-300 break-all border border-outline-variant">
+                      LOCK SIG: {selectedSession.tamperLockSignature}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Dials / stats bar (Cadence & Intention) */}
             <div className="grid grid-cols-2 gap-4 mb-5">

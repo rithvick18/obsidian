@@ -112,7 +112,7 @@ export default function QuantumView() {
           </div>
 
           <button
-            onClick={handleGenerateKey}
+            onClick={() => handleGenerateKey()}
             disabled={isGenerating}
             className={`w-full py-3 font-mono text-xs rounded transition-all uppercase tracking-widest font-bold flex items-center justify-center gap-2 cursor-pointer ${
               isGenerating

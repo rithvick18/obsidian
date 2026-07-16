@@ -29,6 +29,7 @@ import RiskView from './components/RiskView';
 import CopilotView from './components/CopilotView';
 import MapView from './components/MapView';
 import SessionsView from './components/SessionsView';
+import DualControlModal from './components/DualControlModal';
 
 import { SecurityProvider, useSecurity } from './context/SecurityContext';
 
@@ -45,7 +46,15 @@ function Dashboard() {
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  const { isConnected, incidents } = useSecurity();
+  const { 
+    isConnected, 
+    incidents,
+    dualControlModalOpen,
+    dualControlActionType,
+    dualControlTargetEntity,
+    closeDualControlModal,
+    confirmDualControlAction
+  } = useSecurity();
 
   // Listen to incidents in context to generate live notifications
   useEffect(() => {
@@ -310,6 +319,15 @@ function Dashboard() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Dual-Control (Four-Eyes Principle) Modal */}
+      <DualControlModal
+        isOpen={dualControlModalOpen}
+        onClose={closeDualControlModal}
+        onConfirm={confirmDualControlAction}
+        actionType={dualControlActionType}
+        targetEntity={dualControlTargetEntity}
+      />
 
       {/* Backdrop overlay for mobile menu */}
       {isMobileMenuOpen && (
