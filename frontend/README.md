@@ -51,22 +51,22 @@ The backend serves the live event simulation, WebSocket stream, and handles the 
 
 2. (Optional) Create and activate a Python virtual environment:
    ```bash
-   python -m venv venv
+   python3 -m venv venv
    source venv/bin/activate  # On macOS/Linux
    # or venv\Scripts\activate on Windows
    ```
 
 3. Install required Python packages:
    ```bash
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    ```
 
 4. Configure your Gemini API key (optional but recommended for full Copilot features):
-   ```bash
-   export GEMINI_API_KEY="your-gemini-api-key-here"  # On macOS/Linux
-   # or set GEMINI_API_KEY="your-gemini-api-key-here" on Windows Cmd
-   # or $env:GEMINI_API_KEY="your-gemini-api-key-here" on Windows PowerShell
+   Open `backend/.env` (and optionally `frontend/.env`) and add your API key:
+   ```env
+   GEMINI_API_KEY="your-gemini-api-key-here"
    ```
+   The backend server automatically loads this key from the `.env` file using `python-dotenv`.
 
 5. Run the FastAPI server:
    ```bash
@@ -101,7 +101,7 @@ The frontend renders the React dashboard and connects to the backend server.
 
 ## ⚙️ Configuration Details
 
-- **Gemini API Integration**: The AI Copilot Chat searches the environment variables for `GEMINI_API_KEY`. If this key is not set, the backend automatically falls back to a rules-based fallback system simulating context responses for `INC-8429`, Quantum Cryptography, and Arjun Vardhan.
+- **Gemini API Integration**: The AI Copilot Chat loads environment variables (including `GEMINI_API_KEY` defined in `.env`). If this key is not set, the backend automatically falls back to a rules-based fallback system simulating context responses for `INC-8429`, Quantum Cryptography, and Arjun Vardhan.
 - **REST Endpoints**:
   - `GET /api/v1/system/status`: Retrieves real-time metrics of the Security Engine.
   - `POST /api/v1/mitigate/force-rotate`: Revokes user credentials and replaces them with fresh post-quantum cryptographic keys.

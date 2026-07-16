@@ -18,6 +18,10 @@ import os
 import random
 import secrets
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
