@@ -48,54 +48,9 @@ interface SecurityContextType {
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
 
-// Synchronized baseline data frames matching SQLite schemas
-const INITIAL_INCIDENTS: Incident[] = [
-  {
-    id: 'INC-8429',
-    title: 'Unauthorized Database Bulk Export Attempt',
-    timeAgo: '12m ago',
-    severity: 'critical',
-    tags: ['Data Leakage', 'Credential Abuse', 'Insider Threat'],
-    impactedEntity: 'contractor_node_02',
-    assignee: 'SOC_Operator_04',
-    status: 'Investigating',
-    attackChain: {
-      node1: '192.168.4.14',
-      node2: 'External Contractor',
-      node3: 'SV-PROD-DB-02'
-    },
-    timeline: [
-      {
-        time: '19:35:12',
-        title: 'Anomalous Query Spike Detected',
-        description: 'User initiated bulk SELECT statements with row extraction count > 10,000 queries.',
-        statusBadge: 'ANOMALY',
-        type: 'error'
-      }
-    ]
-  }
-];
-
-const INITIAL_SESSIONS: PrivilegedSession[] = [
-  {
-    id: 'sess-001',
-    user: 'admin_node_01',
-    avatarInitials: 'AD',
-    ipAddress: '192.168.1.50',
-    sourceDevice: 'M4 MacBook Air',
-    resource: 'IT-COLO-CLUSTER-01',
-    resourceType: 'cluster',
-    duration: '42m',
-    riskIndex: 10,
-    riskText: 'LOW',
-    status: 'Active',
-    logs: ['[SESSION START] Core pipeline connection authenticated via network key exchange.'],
-    typingCadence: 78,
-    commandIntention: 92
-  }
-];
-
-// Cleaned up benchmarking array tracking strict FIPS 203/204 standard definitions exclusively
+// Purged baseline arrays to enforce absolute reliance on active backend streams
+const INITIAL_INCIDENTS: Incident[] = [];
+const INITIAL_SESSIONS: PrivilegedSession[] = [];
 const INITIAL_ALGORITHMS: AlgorithmPerformance[] = [
   { name: 'ML-KEM-1024', latency: 152, level: 'Level 5 (FIPS 203)', size: '1.5 KB', status: 'ACTIVE' },
   { name: 'ML-DSA-85', latency: 254, level: 'Level 5 (FIPS 204)', size: '2.6 KB', status: 'ACTIVE' },
@@ -109,9 +64,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [algorithms, setAlgorithms] = useState<AlgorithmPerformance[]>(INITIAL_ALGORITHMS);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   
-  const [signals, setSignals] = useState<any[]>([
-    { id: 1, origin: 'Internal Gateway (192.168.4.12)', target: 'Chennai Infrastructure Subnet', severity: 'high', rate: '1.2 GB/s' }
-  ]);
+  const [signals, setSignals] = useState<any[]>([]);
 
   const [generationLogs, setGenerationLogs] = useState<string[]>([
     'System status: Stable. Ready for quantum safe encryption audit.',
@@ -149,22 +102,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const [complianceScanning, setComplianceScanning] = useState(false);
   const [auditScore, setAuditScore] = useState(94.2);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([
-    {
-      timestamp: '19:15',
-      eventType: 'System Bootstrap Audit Signed',
-      framework: 'FIPS-140-3',
-      artifactId: 'BOOT-SIG-042',
-      status: 'Signed',
-      icon: 'shield',
-      risk_score: 15,
-      user_id: 'admin_node_01',
-      role: 'System Administrator',
-      department: 'IT Operations',
-      action: 'System Bootstrap Audit Signed',
-      resource: 'BOOT-SIG-042'
-    }
-  ]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   const fetchSystemStatus = useCallback(async () => {
     try {
