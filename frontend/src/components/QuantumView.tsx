@@ -13,43 +13,12 @@ import {
 } from 'lucide-react';
 import { AlgorithmPerformance } from '../types';
 
+import { useSecurity } from '../context/SecurityContext';
+
 export default function QuantumView() {
-  const [algorithms, setAlgorithms] = useState<AlgorithmPerformance[]>([]);
+  const { algorithms, generationLogs, isGeneratingKey: isGenerating, generatePqcKey: handleGenerateKey } = useSecurity();
   const [selectedAlgo, setSelectedAlgo] = useState('ML-KEM-768');
   const [entropyLevel, setEntropyLevel] = useState(92.4);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationLogs, setGenerationLogs] = useState<string[]>([
-    'System status: Stable. Ready for quantum safe encryption audit.',
-    'Click "Generate Safe PQC Key" above to deploy cryptographic lattice layers.'
-  ]);
-
-  const handleGenerateKey = () => {
-    setIsGenerating(true);
-    const newLogs = [
-      `[INIT] Launching Lattice-Based Key Generator sequence...`,
-      `[STEP 1] Acquiring high-entropy pool sample... (Level: ${entropyLevel}%)`,
-      `[STEP 2] Running multi-dimensional matrix noise injection...`,
-      `[STEP 3] Formulating secret polynomial parameters with standard lattice width (k=3)...`,
-      `[SUCCESS] Key generation completed successfully under standard ML-KEM protocol.`,
-      `[PUBLIC KEY SHA256] 0x${Math.random().toString(16).substring(2, 10)}...${Math.random().toString(16).substring(2, 10)}`,
-      `[VERIFIED] Key verified for zero-knowledge decryption.`
-    ];
-
-    let currentStep = 0;
-    setGenerationLogs([]);
-    
-    const interval = setInterval(() => {
-      if (currentStep < newLogs.length) {
-        setGenerationLogs(prev => [...prev, newLogs[currentStep]]);
-        currentStep++;
-      } else {
-        clearInterval(interval);
-        setIsGenerating(false);
-        // Slightly fluctuate entropy levels for live interaction
-        setEntropyLevel(prev => Math.min(100, Math.max(80, parseFloat((prev + (Math.random() * 4 - 2)).toFixed(1)))));
-      }
-    }, 400);
-  };
 
   return (
     <div className="space-y-6">

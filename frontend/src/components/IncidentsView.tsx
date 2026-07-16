@@ -36,8 +36,10 @@ const defaultIncident: Incident = {
   timeline: [],
 };
 
+import { useSecurity } from '../context/SecurityContext';
+
 export default function IncidentsView() {
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const { incidents, isolateHost, mitigateIncidentDirect } = useSecurity();
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [isolationRunning, setIsolationRunning] = useState<string | null>(null);
 
@@ -49,52 +51,14 @@ export default function IncidentsView() {
     setIsolationRunning(entityName);
 
     setTimeout(() => {
-      // Update incident status to mitigated or isolated, and add a log to its timeline
-      setIncidents((prevIncidents: Incident[]) =>
-        prevIncidents.map((inc: Incident) => {
-          if (inc.id === selectedIncident.id) {
-            // Check if the timeline already has this containment action
-            const isAlreadyContained = inc.timeline.some((t: any) => t.title === 'Manual Action: Host Isolated');
-            if (isAlreadyContained) return inc;
-
-            const updatedTimeline = [
-              {
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                title: 'Manual Action: Host Isolated',
-                description: `Operator triggered immediate micro-segmentation block on ${entityName}. Outbound routes shut down.`,
-                statusBadge: 'MANUAL ISO',
-                type: 'success' as const
-              },
-              ...inc.timeline
-            ];
-
-            return {
-              ...inc,
-              status: 'Mitigated' as const,
-              timeline: updatedTimeline
-            };
-          }
-          return inc;
-        })
-      );
+      isolateHost(entityName, selectedIncident.id);
       setIsolationRunning(null);
     }, 1200);
   };
 
   const handleMitigateDirect = () => {
     if (!selectedIncident) return;
-
-    setIncidents((prevIncidents: Incident[]) =>
-      prevIncidents.map((inc: Incident) => {
-        if (inc.id === selectedIncident.id) {
-          return {
-            ...inc,
-            status: 'Mitigated' as const
-          };
-        }
-        return inc;
-      })
-    );
+    mitigateIncidentDirect(selectedIncident.id);
   };
 
   return (

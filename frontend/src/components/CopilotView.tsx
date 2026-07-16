@@ -21,7 +21,10 @@ interface ChatMessage {
   isStreaming?: boolean;
 }
 
+import { useSecurity } from '../context/SecurityContext';
+
 export default function CopilotView() {
+  const { sendCopilotMessage } = useSecurity();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       sender: 'assistant',
@@ -108,7 +111,7 @@ As an AI-powered security architect, I can assist you with:
 Please select one of the suggested query chips below or provide a more specific security telemetry question.`;
   };
 
-  const handleSendMessage = (textToSend: string) => {
+  const handleSendMessage = async (textToSend: string) => {
     if (!textToSend.trim()) return;
 
     const userMsg: ChatMessage = {
@@ -121,49 +124,45 @@ Please select one of the suggested query chips below or provide a more specific 
     setInputText('');
     setIsTyping(true);
 
-    // Simulate Streaming response
-    setTimeout(() => {
-      const fullResponse = generateAnswer(textToSend);
-      
-      const assistantMsg: ChatMessage = {
-        sender: 'assistant',
-        text: '',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isStreaming: true
-      };
-      
-      setMessages(prev => [...prev, assistantMsg]);
-      setIsTyping(false);
+    const fullResponse = await sendCopilotMessage(textToSend);
 
-      let currentLength = 0;
-      const speed = 10; // faster typing
-      const interval = setInterval(() => {
-        if (currentLength < fullResponse.length) {
-          currentLength += Math.min(6, fullResponse.length - currentLength);
-          const chunk = fullResponse.substring(0, currentLength);
-          
-          setMessages(prev => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last && last.sender === 'assistant' && last.isStreaming) {
-              last.text = chunk;
-            }
-            return updated;
-          });
-        } else {
-          clearInterval(interval);
-          setMessages(prev => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last && last.sender === 'assistant') {
-              last.isStreaming = false;
-            }
-            return updated;
-          });
-        }
-      }, speed);
+    setIsTyping(false);
+    const assistantMsg: ChatMessage = {
+      sender: 'assistant',
+      text: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isStreaming: true
+    };
+    
+    setMessages(prev => [...prev, assistantMsg]);
 
-    }, 1000);
+    let currentLength = 0;
+    const speed = 10;
+    const interval = setInterval(() => {
+      if (currentLength < fullResponse.length) {
+        currentLength += Math.min(6, fullResponse.length - currentLength);
+        const chunk = fullResponse.substring(0, currentLength);
+        
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.sender === 'assistant' && last.isStreaming) {
+            last.text = chunk;
+          }
+          return updated;
+        });
+      } else {
+        clearInterval(interval);
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.sender === 'assistant') {
+            last.isStreaming = false;
+          }
+          return updated;
+        });
+      }
+    }, speed);
   };
 
   return (

@@ -33,53 +33,22 @@ const defaultSession: PrivilegedSession = {
   commandIntention: 0,
 };
 
+import { useSecurity } from '../context/SecurityContext';
+
 export default function SessionsView() {
-  const [sessions, setSessions] = useState<PrivilegedSession[]>([]);
+  const { sessions, terminateSession, flagSession } = useSecurity();
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
   const selectedSession = sessions.find(sess => sess.id === selectedSessionId) || sessions[0] || defaultSession;
 
   const handleTerminateSession = () => {
-    setSessions(prevSessions => 
-      prevSessions.map(sess => {
-        if (sess.id === selectedSession.id) {
-          // Check if already terminated
-          if (sess.status === 'Terminated') return sess;
-          
-          const updatedLogs = [
-            ...sess.logs,
-            '-------------------------------------------------------',
-            `[ADMIN LOCKOUT TRIGGERED AT ${new Date().toLocaleTimeString()}]`,
-            'FATAL: Session forcefully severed by Security Operator command.',
-            'Connection closed. Return Code: 137'
-          ];
-          
-          return {
-            ...sess,
-            status: 'Terminated' as const,
-            logs: updatedLogs,
-            riskIndex: 100
-          };
-        }
-        return sess;
-      })
-    );
+    if (!selectedSession) return;
+    terminateSession(selectedSession.id);
   };
 
   const handleFlagSession = () => {
-    setSessions(prevSessions => 
-      prevSessions.map(sess => {
-        if (sess.id === selectedSession.id) {
-          if (sess.status === 'Flagged') return sess;
-          return {
-            ...sess,
-            status: 'Flagged' as const,
-            riskIndex: Math.min(100, sess.riskIndex + 15)
-          };
-        }
-        return sess;
-      })
-    );
+    if (!selectedSession) return;
+    flagSession(selectedSession.id);
   };
 
   return (

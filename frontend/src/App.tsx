@@ -30,7 +30,9 @@ import CopilotView from './components/CopilotView';
 import MapView from './components/MapView';
 import SessionsView from './components/SessionsView';
 
-export default function App() {
+import { SecurityProvider, useSecurity } from './context/SecurityContext';
+
+function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('executive');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -42,6 +44,24 @@ export default function App() {
     { id: 2, text: 'Quantum subnet ML-KEM synchronization complete', read: false },
   ]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const { isConnected, incidents } = useSecurity();
+
+  // Listen to incidents in context to generate live notifications
+  useEffect(() => {
+    if (incidents.length > 0) {
+      const latest = incidents[0];
+      const alertText = `${latest.title} (${latest.impactedEntity})`;
+      // Avoid duplicates
+      setNotifications((prev) => {
+        if (prev.some((n) => n.text === alertText)) return prev;
+        return [
+          { id: Date.now(), text: alertText, read: false },
+          ...prev
+        ];
+      });
+    }
+  }, [incidents]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -202,10 +222,17 @@ export default function App() {
           <div className="flex items-center gap-4">
             
             {/* Live Indicator Beacon */}
-            <div className="hidden sm:flex items-center gap-2 bg-[#005236]/30 border border-[#005236]/60 rounded-full py-1.5 px-3.5 text-xs text-[#4edea3] font-semibold">
-              <span className="w-2 h-2 rounded-full bg-[#4edea3] animate-pulse"></span>
-              VIGILANCE ENGINE ACTIVE
-            </div>
+            {isConnected ? (
+              <div className="hidden sm:flex items-center gap-2 bg-[#005236]/30 border border-[#005236]/60 rounded-full py-1.5 px-3.5 text-xs text-[#4edea3] font-semibold">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#4edea3] animate-pulse"></span>
+                VIGILANCE ENGINE ACTIVE
+              </div>
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 bg-error/10 border border-error/30 rounded-full py-1.5 px-3.5 text-xs text-error font-semibold">
+                <span className="w-2.5 h-2.5 rounded-full bg-error"></span>
+                ENGINE OFFLINE
+              </div>
+            )}
 
             {/* Theme Toggle Button */}
             <button 
@@ -292,5 +319,13 @@ export default function App() {
         ></div>
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <SecurityProvider>
+      <Dashboard />
+    </SecurityProvider>
   );
 }

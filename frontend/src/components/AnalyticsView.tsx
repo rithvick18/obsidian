@@ -16,28 +16,10 @@ import {
 } from 'lucide-react';
 import { AuditEvent } from '../types';
 
-export default function AnalyticsView() {
-  const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const [auditScore, setAuditScore] = useState(94.2);
+import { useSecurity } from '../context/SecurityContext';
 
-  const runComplianceScan = () => {
-    setIsScanning(true);
-    
-    setTimeout(() => {
-      const newEvent: AuditEvent = {
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        eventType: 'Automated Agent Scan Completed',
-        framework: 'NIST-CSF',
-        artifactId: `SCN-RES-${Math.floor(Math.random() * 900) + 100}`,
-        status: 'Verified',
-        icon: 'check_circle',
-      };
-      setEvents(prev => [newEvent, ...prev]);
-      setAuditScore(prev => Math.min(100.0, parseFloat((prev + 0.5).toFixed(1))));
-      setIsScanning(false);
-    }, 1500);
-  };
+export default function AnalyticsView() {
+  const { auditEvents: events, complianceScanning: isScanning, auditScore, runComplianceScan } = useSecurity();
 
   return (
     <div className="space-y-6">

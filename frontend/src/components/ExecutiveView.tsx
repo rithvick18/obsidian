@@ -15,22 +15,17 @@ import {
   Lock
 } from 'lucide-react';
 
-export default function ExecutiveView() {
-  const [healthScore, setHealthScore] = useState(90.0);
+import { useSecurity } from '../context/SecurityContext';
 
-  useEffect(() => {
-    const target = 97.6;
-    const interval = setInterval(() => {
-      setHealthScore(prev => {
-        if (prev >= target) {
-          clearInterval(interval);
-          return target;
-        }
-        return parseFloat((prev + 0.4).toFixed(1));
-      });
-    }, 25);
-    return () => clearInterval(interval);
-  }, []);
+export default function ExecutiveView() {
+  const { systemStatus, incidents } = useSecurity();
+
+  const activeIncidents = incidents.filter(i => i.status !== 'Mitigated');
+  const riskIndex = activeIncidents.length > 0 
+    ? Math.max(...activeIncidents.map(i => i.severity === 'critical' ? 95 : 80)) 
+    : 12.4;
+
+  const healthScore = parseFloat(Math.max(10, 100 - (activeIncidents.length * 24.2)).toFixed(1));
 
   return (
     <div className="space-y-6">
@@ -44,14 +39,16 @@ export default function ExecutiveView() {
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-xs">Risk Index</p>
-              <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">12.4</h2>
+              <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">{riskIndex}</h2>
             </div>
-            <span className="font-label-md text-secondary bg-[#005236] px-2.5 py-1 rounded text-xs font-semibold">
-              -4.2%
+            <span className={`font-label-md px-2.5 py-1 rounded text-xs font-semibold ${
+              activeIncidents.length > 0 ? 'text-error bg-error/10' : 'text-secondary bg-[#005236]'
+            }`}>
+              {activeIncidents.length > 0 ? `+${(activeIncidents.length * 15).toFixed(1)}%` : '-4.2%'}
             </span>
           </div>
           <div className="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
-            <div className="h-full bg-secondary" style={{ width: '12.4%' }}></div>
+            <div className="h-full bg-secondary" style={{ width: `${Math.min(100, riskIndex)}%` }}></div>
           </div>
           <p className="mt-4 text-sm text-on-surface-variant">Optimal range maintained across all 48 secure nodes.</p>
         </div>
@@ -122,15 +119,19 @@ export default function ExecutiveView() {
               <div className="text-center px-4">
                 <div className="font-label-md text-on-surface-variant text-xs tracking-[0.25em] uppercase mb-1">Overall Health</div>
                 <div className="font-display-lg text-6xl font-bold gradient-text">{healthScore}</div>
-                <div className="font-headline-sm text-secondary text-lg font-bold tracking-widest uppercase mt-2">Excellent</div>
+                <div className={`font-headline-sm text-lg font-bold tracking-widest uppercase mt-2 ${
+                  healthScore < 60 ? 'text-error animate-pulse' : healthScore < 85 ? 'text-amber-500' : 'text-secondary'
+                }`}>
+                  {healthScore < 60 ? 'Critical' : healthScore < 85 ? 'Warning' : 'Excellent'}
+                </div>
               </div>
             </div>
 
             {/* Ingress stats bar below ring */}
             <div className="mt-10 glass-panel px-8 py-3 rounded-full border border-primary/20 flex gap-8 items-center bg-surface-container-lowest/80 backdrop-blur-md">
               <div className="text-center">
-                <div className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Endpoints</div>
-                <div className="font-headline-sm text-primary font-bold text-lg">12.4k</div>
+                <div className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Sessions Monitored</div>
+                <div className="font-headline-sm text-primary font-bold text-lg">{systemStatus?.sessions_monitored ?? '1,240'}</div>
               </div>
               <div className="w-px h-8 bg-outline-variant"></div>
               <div className="text-center">
@@ -140,7 +141,7 @@ export default function ExecutiveView() {
               <div className="w-px h-8 bg-outline-variant"></div>
               <div className="text-center">
                 <div className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Threats Deflected</div>
-                <div className="font-headline-sm text-secondary font-bold text-lg">821</div>
+                <div className="font-headline-sm text-secondary font-bold text-lg">{systemStatus?.anomalies_deflected ?? '821'}</div>
               </div>
             </div>
           </div>

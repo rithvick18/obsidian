@@ -41,8 +41,10 @@ const defaultProfile: RiskProfile = {
   telemetry: []
 };
 
+import { useSecurity } from '../context/SecurityContext';
+
 export default function RiskView() {
-  const [profiles, setProfiles] = useState<RiskProfile[]>([]);
+  const { profiles } = useSecurity();
   const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
   const profile: RiskProfile = profiles[selectedProfileIndex] || defaultProfile;
 

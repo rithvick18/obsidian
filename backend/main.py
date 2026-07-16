@@ -38,7 +38,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -336,6 +336,118 @@ async def force_rotate(body: ForceRotateRequest) -> dict[str, Any]:
         "message": f"Credentials for '{body.user_id}' revoked and rotated with PQC keys.",
         "rotation": rotation,
     }
+
+
+# ---------------------------------------------------------------------------
+# REST Endpoint — AI Copilot Chat
+# ---------------------------------------------------------------------------
+
+
+class CopilotChatRequest(BaseModel):
+    """Request body for the Copilot Chat endpoint."""
+    message: str
+
+
+@app.post("/api/v1/copilot/chat")
+async def copilot_chat(body: CopilotChatRequest) -> dict[str, Any]:
+    """
+    Query Gemini for smart cybersecurity architect guidance,
+    or fall back to a rule-based triage answer generator if the API key is missing.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        # Fallback rule-based response
+        q = body.message.lower()
+        if "inc-8429" in q or "lateral" in q:
+            reply = (
+                "### Threat Analysis: INC-8429 (Unauthorized Database Bulk Export)\n\n"
+                "**Attack Path Overview:**\n"
+                "The attacker compromised the credential set for **j.smith@obsidian.io** from a Ukrainian IP. "
+                "They achieved **UAC Bypass (T1068)** to elevate privileges and executed direct mass query exports targeting `SV-PROD-DB-02`.\n\n"
+                "**Recommended Mitigation Playbook:**\n"
+                "1. **Isolate the workstation:** Apply the virtual quarantine sandbox rules to sever outbound routes. *(Click \"Isolate Impacted Host\" in the Incidents dashboard)*.\n"
+                "2. **Revoke Active SAML Sessions:** Invalidate Smith's SAML tokens to block subsequent database access attempts.\n"
+                "3. **Trigger Password Vault Rotation:** Force immediate rotation of administrative database connection strings."
+            )
+        elif "quantum" in q or "pqc" in q or "lattice" in q:
+            reply = (
+                "### Post-Quantum Cryptographic Migration Guide\n\n"
+                "We are currently transitioning local subnets from legacy asymmetric algorithms (RSA-4096) to NIST-approved **FIPS 203 Lattice Cryptography** standards.\n\n"
+                "**Current Readiness Standing:**\n"
+                "- **ML-KEM-768 Deployment:** **88% Active**. Remaining subnets include legacy logistics offices in APAC.\n"
+                "- **Latency Impact:** ML-KEM-768 latency is highly optimized (~152.4ms overhead), whereas RSA-4096 exhibits extreme latency (~14.2s) under quantum emulation testing.\n\n"
+                "*Recommendation:* Proceed to the **Quantum Center** to trigger corporate lattice seed keys for the remainder of legacy APAC routers."
+            )
+        elif "arjun" in q or "trust" in q or "risk" in q:
+            reply = (
+                "### User Risk Triage: Arjun Vardhan\n\n"
+                "**Identity Security Audit:**\n"
+                "- **Current Trust Score:** **28/100 (HIGH RISK)**\n"
+                "- **Critical Trigger Event:** \"Impossible Travel\" detected between Chennai, IN and Frankfurt, DE within a 45-minute window.\n"
+                "- **Access Anomaly:** Attempted to access financial buckets S3://prod-fin-records/* from the unrecognized Frankfurt IP.\n\n"
+                "**Mitigation Protocol:**\n"
+                "- Proactively place user on temporary SAML quarantine.\n"
+                "- Verify whether user initiated an authorized VPN tunnel."
+            )
+        elif "vulnerab" in q or "subnet" in q or "port" in q:
+            reply = (
+                "### Corporate Subnet Vulnerability Matrix\n\n"
+                "Active scanning of internal subnets reveals **2 Critical** and **14 Moderate** vulnerabilities:\n\n"
+                "1. **Subnet EMEA-PROD-DB:** Exposed to unpatched CVE-2026-9021 (Remote Code Execution, named \"Frostbyte\").\n"
+                "2. **Subnet MKT-WS:** High incidence of endpoint systems running UAC bypass configurations.\n\n"
+                "*Remediation action:* Trigger an automated patch schedule via the **Security Analytics** scanning board to apply the security patch instantly."
+            )
+        else:
+            reply = (
+                "### Obsidian Security Copilot Response\n\n"
+                f"I have analyzed your request: *\"{body.message}\"*.\n\n"
+                "As an AI-powered security architect, I can assist you with:\n"
+                "- **Incident Investigation:** Triage of active threat alerts like INC-8429 or INC-8395.\n"
+                "- **Quantum Cryptography:** Guidance on lattice-based keys, ML-KEM or ML-DSA protocols.\n"
+                "- **Risk Remediation:** Analyzing employee anomalies, impossible travel, or credential risk.\n"
+                "- **Remediation Execution:** Generating sandboxing commands for infected target hosts.\n\n"
+                "Please select one of the suggested query chips below or provide a more specific security telemetry question."
+            )
+        return {"response": reply}
+
+    import urllib.request
+    import urllib.error
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    system_instruction = (
+        "You are Obsidian Copilot, a secure AI cybersecurity architect assistant. "
+        "You have access to active XDR telemetry and help SOC operators with triage, containment, and cryptographic modeling. "
+        "Use markdown and keep answers concise and professional."
+    )
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": f"System Context: {system_instruction}\nUser Query: {body.message}"}
+                ]
+            }
+        ]
+    }
+
+    req_body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=req_body,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=10.0) as response:
+            resp_data = json.loads(response.read().decode("utf-8"))
+            try:
+                text = resp_data["candidates"][0]["content"]["parts"][0]["text"]
+                return {"response": text}
+            except (KeyError, IndexError):
+                return {"response": "Error: Failed to parse Gemini response payload."}
+    except Exception as e:
+        return {"response": f"Error calling Gemini API: {str(e)}"}
 
 
 # ---------------------------------------------------------------------------

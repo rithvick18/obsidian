@@ -21,13 +21,11 @@ interface AttackSignal {
   rate: string;
 }
 
+import { useSecurity } from '../context/SecurityContext';
+
 export default function MapView() {
+  const { signals } = useSecurity();
   const [utcTime, setUtcTime] = useState('');
-  const [signals, setSignals] = useState<AttackSignal[]>([
-    { id: 1, origin: 'Frankfurt, DE (185.12.99.102)', target: 'Chennai Cloud Hub', severity: 'high', rate: '1.2 GB/s' },
-    { id: 2, origin: 'Kiev, UA (45.128.11.94)', target: 'SV-PROD-DB-02', severity: 'critical', rate: 'Bulk SQL' },
-    { id: 3, origin: 'Beijing, CN (112.90.1.18)', target: 'EMEA Subnet Router', severity: 'medium', rate: '600 KB/s' },
-  ]);
 
   useEffect(() => {
     // Update live clock
@@ -38,38 +36,6 @@ export default function MapView() {
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
-  }, []);
-
-  // Simulate new signals appearing dynamically over time
-  useEffect(() => {
-    const generator = setInterval(() => {
-      const origins = [
-        'Seoul, KR (210.12.9.4)',
-        'Amsterdam, NL (82.11.9.155)',
-        'Singapore, SG (103.4.12.22)',
-        'Sao Paulo, BR (177.10.22.9)'
-      ];
-      const targets = [
-        'London Financial Vault',
-        'US-West Endpoint Node',
-        'K8s Core Cluster',
-        'Corporate VPN Gateway'
-      ];
-      const severities: ('critical' | 'high' | 'medium')[] = ['medium', 'high', 'critical'];
-      const rates = ['800 KB/s', '1.4 GB/s', 'Sync Request', 'SSH Brute'];
-
-      const randomSignal: AttackSignal = {
-        id: Date.now(),
-        origin: origins[Math.floor(Math.random() * origins.length)],
-        target: targets[Math.floor(Math.random() * targets.length)],
-        severity: severities[Math.floor(Math.random() * severities.length)],
-        rate: rates[Math.floor(Math.random() * rates.length)]
-      };
-
-      setSignals(prev => [randomSignal, ...prev.slice(0, 4)]);
-    }, 4000);
-
-    return () => clearInterval(generator);
   }, []);
 
   return (
