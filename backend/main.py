@@ -31,6 +31,300 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
+# SQLite Database Layer & Seeding Service
+# ---------------------------------------------------------------------------
+import sqlite3
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "obsidian.db")
+
+
+def init_db() -> None:
+    """Initialize SQLite database and ensure necessary tables exist."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_telemetry (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            department TEXT NOT NULL,
+            action TEXT NOT NULL,
+            resource TEXT,
+            risk_score INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            is_honeypot INTEGER NOT NULL,
+            tamper_lock_signature TEXT,
+            risk_factors TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mitigation_ledger (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            primary_operator TEXT NOT NULL,
+            secondary_approver TEXT,
+            pqc_token_id TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def seed_telemetry_fabric() -> None:
+    """
+    Populate the SQLite database with a high-density, chronologically ordered
+    operational history (~100 to 200 historically realistic records).
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Clear existing data to ensure clean seed
+    cursor.execute("DELETE FROM audit_telemetry")
+    cursor.execute("DELETE FROM mitigation_ledger")
+
+    now_ts = time.time()
+    start_ts = now_ts - 24 * 3600  # Start 24 hours ago
+    events_to_seed = []
+
+    # 1. admin_node_01: standard maintenance, low risk (60 records)
+    admin_actions = [
+        "Standard maintenance — routine log review",
+        "System healthcheck executed",
+        "Database index optimization complete",
+        "Rotated temporary session credentials",
+        "Archived legacy security log indices",
+        "Nginx config validation check passed",
+    ]
+    for i in range(60):
+        ts = start_ts + (24 * 3600 * (i + random.random()) / 70)
+        base_score = random.randint(5, 12)
+        events_to_seed.append({
+            "id": str(uuid4()),
+            "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+            "user_id": "admin_node_01",
+            "role": "System Administrator",
+            "department": "IT Operations",
+            "action": random.choice(admin_actions),
+            "resource": "IT-COLO-CLUSTER-01",
+            "risk_score": base_score,
+            "status": "SECURE",
+            "is_honeypot": 0,
+            "tamper_lock_signature": None,
+            "risk_factors": json.dumps([])
+        })
+
+    # 2. contractor_node_02: sporadic mid-to-high velocity reads (55 records, grouped in bursts)
+    contractor_actions = [
+        "SELECT * FROM customer_pii LIMIT 100",
+        "SELECT email, phone FROM customer_records WHERE risk_level = 'high'",
+        "Batch fetch customer transaction history",
+        "Query account balances for external analytics sync",
+        "Sudden mass query execution against customer PII tables",
+    ]
+    for burst_idx in range(5):
+        burst_base_ts = start_ts + (24 * 3600 * (burst_idx + 0.5) / 5.5)
+        num_events = random.randint(9, 13)
+        for j in range(num_events):
+            ts = burst_base_ts + j * random.uniform(0.2, 1.5)
+            is_high = random.random() < 0.6
+            risk_score = random.randint(85, 91) if is_high else random.randint(30, 50)
+            status = "ALERT" if risk_score > 75 else "SECURE"
+            
+            factors = []
+            if risk_score > 75:
+                factors.append({"factor": "Role Divergence: Unauthorized cross-boundary asset access (+40)", "delta": 40})
+                factors.append({"factor": "Velocity Spike: >3 high-impact system calls in 2.0s (+25)", "delta": 25})
+                
+            events_to_seed.append({
+                "id": str(uuid4()),
+                "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+                "user_id": "contractor_node_02",
+                "role": "External Contractor",
+                "department": "Data Analytics",
+                "action": random.choice(contractor_actions),
+                "resource": "SV-PROD-DB-02",
+                "risk_score": risk_score,
+                "status": status,
+                "is_honeypot": 0,
+                "tamper_lock_signature": None,
+                "risk_factors": json.dumps(factors)
+            })
+
+    # 3. root_service_node_03: E.g. 20 records
+    root_actions = [
+        "Unauthorized system configuration edit — privilege escalation attempt",
+        "System daemon reload",
+        "Write permission updated for common-auth PAM configuration",
+        "Root certificate synchronized",
+    ]
+    for i in range(20):
+        ts = start_ts + (24 * 3600 * (i + random.random()) / 25)
+        is_high = random.random() < 0.4
+        risk_score = random.randint(92, 96) if is_high else random.randint(10, 30)
+        status = "CRITICAL" if risk_score > 90 else "SECURE"
+        factors = []
+        if risk_score > 90:
+            factors.append({"factor": "Role Divergence: Unauthorized cross-boundary asset access (+40)", "delta": 40})
+            
+        events_to_seed.append({
+            "id": str(uuid4()),
+            "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+            "user_id": "root_service_node_03",
+            "role": "Root Service Account",
+            "department": "Core Infrastructure",
+            "action": random.choice(root_actions),
+            "resource": "OBSIDIAN-VAULT-PRIMARY",
+            "risk_score": risk_score,
+            "status": status,
+            "is_honeypot": 0,
+            "tamper_lock_signature": None,
+            "risk_factors": json.dumps(factors)
+        })
+
+    # 4. intern_node_04: clean history (20 records) terminating with a critical breach
+    intern_actions = [
+        "Helpdesk ticket triage — check user account status",
+        "Reset password request processed for IT Tier 1",
+        "Viewed active network routing tables",
+        "Standard system query for local user directory",
+    ]
+    for i in range(19):
+        ts = start_ts + (23.5 * 3600 * (i + random.random()) / 20)
+        risk_score = random.randint(15, 25)
+        events_to_seed.append({
+            "id": str(uuid4()),
+            "timestamp": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+            "user_id": "intern_node_04",
+            "role": "Helpdesk Intern",
+            "department": "Tier 1 Support",
+            "action": random.choice(intern_actions),
+            "resource": "IT-COLO-CLUSTER-01",
+            "risk_score": risk_score,
+            "status": "SECURE",
+            "is_honeypot": 0,
+            "tamper_lock_signature": None,
+            "risk_factors": json.dumps([])
+        })
+
+    # Abrupt critical breach record for the intern
+    breach_ts = now_ts - 60
+    lock_hash = hashlib.sha3_256(f"intern_node_04:{breach_ts}".encode()).hexdigest()[:24]
+    tamper_sig = f"mldsa_root_honeypot_lock_{lock_hash}"
+    factors = [
+        {"factor": "Canary Honeypot Probe (db_admin.shadow_vault_backup)", "delta": 100},
+        {"factor": "Tamper-Evident ML-DSA Root Signature Locked", "delta": 0},
+    ]
+    events_to_seed.append({
+        "id": str(uuid4()),
+        "timestamp": datetime.fromtimestamp(breach_ts, tz=timezone.utc).isoformat(),
+        "user_id": "intern_node_04",
+        "role": "Helpdesk Intern",
+        "department": "Tier 1 Support",
+        "action": "SELECT * FROM db_admin.shadow_vault_backup — Canary Honeypot Probe",
+        "resource": "db_admin.shadow_vault_backup",
+        "risk_score": 100,
+        "status": "CRITICAL HONEYPOT BREACH",
+        "is_honeypot": 1,
+        "tamper_lock_signature": tamper_sig,
+        "risk_factors": json.dumps(factors)
+    })
+
+    # Sort all events chronologically
+    events_to_seed.sort(key=lambda x: x["timestamp"])
+
+    # Batch insert to database
+    for e in events_to_seed:
+        cursor.execute("""
+            INSERT INTO audit_telemetry (
+                id, timestamp, user_id, role, department, action, resource, risk_score, status, is_honeypot, tamper_lock_signature, risk_factors
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            e["id"], e["timestamp"], e["user_id"], e["role"], e["department"], e["action"], e["resource"], e["risk_score"], e["status"], e["is_honeypot"], e["tamper_lock_signature"], e["risk_factors"]
+        ))
+        
+        # Consistent mitigation ledger entries for high-risk / honeypot events
+        if e["risk_score"] > 75 or e["is_honeypot"] == 1:
+            pqc_id = str(uuid4())
+            action_type = "AUTO_MITIGATION_QUARANTINE" if e["is_honeypot"] == 1 else "AUTO_MITIGATION"
+            cursor.execute("""
+                INSERT INTO mitigation_ledger (
+                    id, timestamp, user_id, action_type, primary_operator, secondary_approver, pqc_token_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                str(uuid4()),
+                e["timestamp"],
+                e["user_id"],
+                action_type,
+                "SYSTEM_ENGINE",
+                "AI_COPOLOT",
+                pqc_id
+            ))
+
+    conn.commit()
+    conn.close()
+
+
+def check_and_seed_db() -> None:
+    """Initialize DB and seed it with telemetry fabric if audit table is empty."""
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM audit_telemetry")
+    count = cursor.fetchone()[0]
+    conn.close()
+    if count == 0:
+        seed_telemetry_fabric()
+
+
+def insert_telemetry_event(event: dict[str, Any]) -> None:
+    """Insert a dynamic live telemetry event into SQLite."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO audit_telemetry (
+            id, timestamp, user_id, role, department, action, resource, risk_score, status, is_honeypot, tamper_lock_signature, risk_factors
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        event["event_id"],
+        event["timestamp"],
+        event["user_id"],
+        event["role"],
+        event["department"],
+        event["action"],
+        event.get("resource", "IT-COLO-CLUSTER-01"),
+        event["risk_score"],
+        event["status"],
+        1 if event["is_honeypot"] else 0,
+        event.get("tamper_lock_signature"),
+        json.dumps(event.get("risk_factors", []))
+    ))
+    conn.commit()
+    conn.close()
+
+
+def fetch_telemetry_event(event_id: str) -> Optional[dict[str, Any]]:
+    """Retrieve a telemetry event from the database, formatted as a dictionary."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM audit_telemetry WHERE id = ?", (event_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    event = dict(row)
+    # Align primary key field with expected event schema
+    event["event_id"] = event.pop("id")
+    event["is_honeypot"] = bool(event["is_honeypot"])
+    event["risk_factors"] = json.loads(event["risk_factors"]) if event["risk_factors"] else []
+    return event
+
+
+# ---------------------------------------------------------------------------
 # Application initialisation
 # ---------------------------------------------------------------------------
 
@@ -89,7 +383,7 @@ _ws_clients: set[WebSocket] = set()
 
 PROFILES: list[dict[str, Any]] = [
     {
-        "user_id": "s.murphy.admin",
+        "user_id": "admin_node_01",
         "role": "System Administrator",
         "department": "IT Operations",
         "action": "Standard maintenance — routine log review",
@@ -97,7 +391,7 @@ PROFILES: list[dict[str, Any]] = [
         "base_status": "SECURE",
     },
     {
-        "user_id": "v.patel.contractor",
+        "user_id": "contractor_node_02",
         "role": "External Contractor",
         "department": "Data Analytics",
         "action": "Sudden mass query execution against customer PII tables",
@@ -105,7 +399,7 @@ PROFILES: list[dict[str, Any]] = [
         "base_status": "ALERT",
     },
     {
-        "user_id": "compromised.root.node",
+        "user_id": "root_service_node_03",
         "role": "Root Service Account",
         "department": "Core Infrastructure",
         "action": "Unauthorized system configuration edit — privilege escalation attempt",
@@ -113,7 +407,7 @@ PROFILES: list[dict[str, Any]] = [
         "base_status": "CRITICAL",
     },
     {
-        "user_id": "c.vance.intern",
+        "user_id": "intern_node_04",
         "role": "Helpdesk Intern",
         "department": "Tier 1 Support",
         "action": "SELECT * FROM db_admin.shadow_vault_backup — Canary Honeypot Probe",
@@ -161,11 +455,18 @@ def _generate_pqc_artefacts() -> dict[str, str]:
     }
 
 
-def _build_rotation_record(user_id: str, trigger: str) -> dict[str, Any]:
-    """Build a full rotation record with PQC artefacts."""
+async def _build_rotation_record(
+    user_id: str,
+    trigger: str,
+    action_type: str = "FORCE_ROTATE",
+    primary_operator: str = "SYSTEM_ENGINE",
+    secondary_approver: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build a full rotation record with PQC artefacts and record in mitigation ledger."""
     pqc = _generate_pqc_artefacts()
+    rotation_id = str(uuid4())
     record = {
-        "rotation_id": str(uuid4()),
+        "rotation_id": rotation_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": user_id,
         "trigger": trigger,
@@ -173,7 +474,27 @@ def _build_rotation_record(user_id: str, trigger: str) -> dict[str, Any]:
         "pqc_keys": pqc,
     }
     _rotation_log.append(record)
-    _metrics["anomalies_deflected"] += 1
+
+    def save_mitigation():
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO mitigation_ledger (
+                id, timestamp, user_id, action_type, primary_operator, secondary_approver, pqc_token_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            str(uuid4()),
+            record["timestamp"],
+            user_id,
+            action_type,
+            primary_operator,
+            secondary_approver,
+            rotation_id
+        ))
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(save_mitigation)
     return record
 
 
@@ -216,12 +537,12 @@ def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_sco
 
     # 1. Time Delta: Is the action happening outside standard operational hours (07:00 - 19:00 UTC)?
     current_hour = datetime.now(timezone.utc).hour
-    if current_hour < 7 or current_hour > 19 or "contractor" in role.lower():
+    if current_hour < 7 or current_hour > 19 or "contractor" in user_id.lower() or "contractor" in role.lower():
         total_score += 15
         risk_factors.append({"factor": "Time Delta: Outside standard operational hours (+15)", "delta": 15})
 
     # 2. Role Divergence: Is a Helpdesk role / Tier 1 / Contractor accessing Core SWIFT Gateways or critical asset?
-    if any(r in role.lower() for r in ("helpdesk", "contractor", "intern", "tier 1")) and any(
+    if (any(r in role.lower() for r in ("helpdesk", "contractor", "intern", "tier 1")) or any(r in user_id.lower() for r in ("contractor", "intern"))) and any(
         k in action.lower() for k in ("swift", "gateways", "pii", "root", "pam", "config", "mass query", "escalation")
     ):
         total_score += 40
@@ -241,48 +562,61 @@ def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_sco
 
 # ---------------------------------------------------------------------------
 # Microservice 1 — Ingestion & Anomaly Engine
-# ---------------------------------------------------------------------------
-
-
-async def _ingestion_loop() -> None:
+# ---------------------------------------------------------------------------async def _ingestion_loop() -> None:
     """
     Continuously generate session events for each corporate profile,
-    broadcast them to every connected WebSocket client, and enqueue
-    high-risk events for the Risk Evaluator.
+    insert them into the SQLite database, query them back, broadcast
+    them to every connected WebSocket client, and enqueue high-risk
+    events for the Risk Evaluator.
     """
     cycle_index = 0
     while True:
         profile = PROFILES[cycle_index % len(PROFILES)]
-        base_score = random.randint(*profile["risk_range"])
+        base_score = random.randint(*profile['risk_range'])
         dynamic_score, factors, is_honeypot, tamper_sig = _calculate_role_distance_risk(
-            user_id=profile["user_id"],
-            role=profile["role"],
-            action=profile["action"],
+            user_id=profile['user_id'],
+            role=profile['role'],
+            action=profile['action'],
             base_score=base_score,
         )
 
-        event: dict[str, Any] = {
-            "event_id": str(uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_id": profile["user_id"],
-            "role": profile["role"],
-            "department": profile["department"],
-            "action": profile["action"],
-            "risk_score": dynamic_score,
-            "status": "CRITICAL HONEYPOT BREACH" if is_honeypot else profile["base_status"],
-            "risk_factors": factors,
-            "is_honeypot": is_honeypot,
+        # Map to specific resource
+        resource = 'IT-COLO-CLUSTER-01'
+        if profile['user_id'] == 'contractor_node_02':
+            resource = 'SV-PROD-DB-02'
+        elif profile['user_id'] == 'root_service_node_03':
+            resource = 'OBSIDIAN-VAULT-PRIMARY'
+        elif profile['user_id'] == 'intern_node_04':
+            resource = 'db_admin.shadow_vault_backup' if is_honeypot else 'IT-COLO-CLUSTER-01'
+
+        event_id = str(uuid4())
+        raw_event = {
+            'event_id': event_id,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'user_id': profile['user_id'],
+            'role': profile['role'],
+            'department': profile['department'],
+            'action': profile['action'],
+            'resource': resource,
+            'risk_score': dynamic_score,
+            'status': 'CRITICAL HONEYPOT BREACH' if is_honeypot else profile['base_status'],
+            'is_honeypot': is_honeypot,
+            'tamper_lock_signature': tamper_sig,
+            'risk_factors': factors,
         }
-        if tamper_sig:
-            event["tamper_lock_signature"] = tamper_sig
 
-        _metrics["sessions_monitored"] += 1
+        # Write to SQLite
+        await asyncio.to_thread(insert_telemetry_event, raw_event)
 
-        # If risk exceeds threshold or honeypot tripped, hand off to the Risk Evaluator
-        if dynamic_score > 75 or is_honeypot:
-            await _anomaly_queue.put(event)
+        # Query back from SQLite to stream the actual database record
+        event = await asyncio.to_thread(fetch_telemetry_event, event_id)
 
-        await _broadcast(json.dumps(event))
+        if event:
+            # If risk exceeds threshold or honeypot tripped, hand off to the Risk Evaluator
+            if event['risk_score'] > 75 or event['is_honeypot']:
+                await _anomaly_queue.put(event)
+
+            await _broadcast(json.dumps(event))
 
         cycle_index += 1
         await asyncio.sleep(2)
@@ -302,21 +636,24 @@ async def _risk_evaluator_loop() -> None:
     while True:
         event = await _anomaly_queue.get()
 
-        is_honeypot = event.get("is_honeypot", False)
+        is_honeypot = event.get('is_honeypot', False)
         if is_honeypot:
-            event["threat_classification"] = "100 [CRITICAL HONEYPOT BREACH]"
-            event["mitigation"] = "Tamper-evident PQC signature locked & immediate quarantine initiated"
+            event['threat_classification'] = '100 [CRITICAL HONEYPOT BREACH]'
+            event['mitigation'] = 'Tamper-evident PQC signature locked & immediate quarantine initiated'
         else:
-            event["threat_classification"] = "INSIDER THREAT — ACTIVE"
-            event["mitigation"] = "Automated PQC token rotation & containment initiated"
+            event['threat_classification'] = 'INSIDER THREAT — ACTIVE'
+            event['mitigation'] = 'Automated PQC token rotation & containment initiated'
 
-        # Perform simulated rotation
-        rotation = _build_rotation_record(
-            user_id=event["user_id"],
-            trigger="auto:honeypot_breach" if is_honeypot else "auto:risk_threshold_exceeded",
+        # Perform simulated rotation and save to mitigation ledger table
+        rotation = await _build_rotation_record(
+            user_id=event['user_id'],
+            trigger='auto:honeypot_breach' if is_honeypot else 'auto:risk_threshold_exceeded',
+            action_type='AUTO_MITIGATION_QUARANTINE' if is_honeypot else 'AUTO_MITIGATION',
+            primary_operator='SYSTEM_ENGINE',
+            secondary_approver='AI_COPOLOT'
         )
-        event["rotation"] = rotation
-        event["status"] = "CRITICAL HONEYPOT BREACH" if is_honeypot else "REVOKED & ROTATED"
+        event['rotation'] = rotation
+        event['status'] = 'CRITICAL HONEYPOT BREACH' if is_honeypot else 'REVOKED & ROTATED'
 
         # Broadcast the enriched threat event
         await _broadcast(json.dumps(event))
@@ -329,13 +666,13 @@ async def _risk_evaluator_loop() -> None:
 # ---------------------------------------------------------------------------
 
 
-@app.on_event("startup")
+@app.on_event('startup')
 async def _startup() -> None:
     """Launch the two background microservice loops."""
+    # Ensure database is initialized and seeded
+    await asyncio.to_thread(check_and_seed_db)
     asyncio.create_task(_ingestion_loop())
     asyncio.create_task(_risk_evaluator_loop())
-
-
 # ---------------------------------------------------------------------------
 # WebSocket endpoint — live log stream
 # ---------------------------------------------------------------------------
@@ -360,23 +697,33 @@ async def ws_logs(ws: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 # REST Endpoint — System Status
 # ---------------------------------------------------------------------------
-
-
-@app.get("/api/v1/system/status")
+@app.get('/api/v1/system/status')
 async def system_status() -> dict[str, Any]:
     """
     Return current operational metrics of the Obsidian Security Engine.
     """
+    def get_stats():
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM audit_telemetry')
+        sessions_monitored = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM mitigation_ledger')
+        anomalies_deflected = cursor.fetchone()[0]
+        conn.close()
+        return sessions_monitored, anomalies_deflected
+
+    sessions_monitored, anomalies_deflected = await asyncio.to_thread(get_stats)
+
     return {
-        "engine": "Obsidian Security Engine",
-        "version": "1.0.0",
-        "sessions_monitored": _metrics["sessions_monitored"],
-        "anomalies_deflected": _metrics["anomalies_deflected"],
-        "vault_status": _metrics["vault_status"],
-        "honeypot_lures_active": _metrics["honeypot_lures_active"],
-        "uptime_seconds": round(time.time() - _boot_time, 2),
-        "active_ws_clients": len(_ws_clients),
-        "rotation_log_size": len(_rotation_log),
+        'engine': 'Obsidian Security Engine',
+        'version': '1.0.0',
+        'sessions_monitored': sessions_monitored,
+        'anomalies_deflected': anomalies_deflected,
+        'vault_status': _metrics['vault_status'],
+        'honeypot_lures_active': _metrics['honeypot_lures_active'],
+        'uptime_seconds': round(time.time() - _boot_time, 2),
+        'active_ws_clients': len(_ws_clients),
+        'rotation_log_size': len(_rotation_log),
     }
 
 
@@ -388,12 +735,12 @@ async def system_status() -> dict[str, Any]:
 class ForceRotateRequest(BaseModel):
     """Request body for the unified manual force-rotate & dual-control mitigation endpoint."""
     user_id: str
-    action_type: str = "FORCE_ROTATE"  # FORCE_ROTATE, ISOLATE_HOST, TERMINATE_SESSION, GENERATE_KEY
-    primary_operator: str = "SOC_Operator_04"
+    action_type: str = 'FORCE_ROTATE'  # FORCE_ROTATE, ISOLATE_HOST, TERMINATE_SESSION, GENERATE_KEY
+    primary_operator: str = 'SOC_Operator_04'
     secondary_approver: Optional[str] = None
 
 
-@app.post("/api/v1/mitigate/force-rotate")
+@app.post('/api/v1/mitigate/force-rotate')
 async def force_rotate(body: ForceRotateRequest) -> dict[str, Any]:
     """
     Unified dual-control mitigation endpoint.
@@ -403,22 +750,49 @@ async def force_rotate(body: ForceRotateRequest) -> dict[str, Any]:
     """
     if not body.secondary_approver or not body.secondary_approver.strip():
         return {
-            "result": "error",
-            "message": "Dual-control authorization rejected: Secondary approver profile is required under the Four-Eyes Principle.",
-            "status_code": 403,
+            'result': 'error',
+            'message': 'Dual-control authorization rejected: Secondary approver profile is required under the Four-Eyes Principle.',
+            'status_code': 403,
         }
 
-    rotation = _build_rotation_record(
+    rotation = await _build_rotation_record(
         user_id=body.user_id,
-        trigger=f"manual:{body.action_type.lower()}_by_{body.primary_operator}_auth_{body.secondary_approver}",
+        trigger=f'manual:{body.action_type.lower()}_by_{body.primary_operator}_auth_{body.secondary_approver}',
+        action_type=body.action_type,
+        primary_operator=body.primary_operator,
+        secondary_approver=body.secondary_approver,
     )
 
-    action_label = {
+    role_map = {
+        "admin_node_01": "Admin Core Node",
+        "contractor_node_02": "Contractor Node",
+        "root_service_node_03": "Root Service Node",
+        "intern_node_04": "Intern Node",
+    }
+    uid_lower = body.user_id.lower()
+    if uid_lower in role_map:
+        role_label = role_map[uid_lower]
+    elif "admin" in uid_lower:
+        role_label = "Admin Core Node"
+    elif "contractor" in uid_lower:
+        role_label = "Contractor Node"
+    elif "root" in uid_lower:
+        role_label = "Root Service Node"
+    elif "intern" in uid_lower:
+        role_label = "Intern Node"
+    elif "analyst" in uid_lower:
+        role_label = "Analyst Node"
+    else:
+        role_label = "System Node"
+
+    action_base = {
         "FORCE_ROTATE": "Manual force-rotate & PQC rekeying executed",
         "ISOLATE_HOST": "Virtual containment isolation block enforced on host",
         "TERMINATE_SESSION": "Privileged session forcefully severed with Code 137",
         "GENERATE_KEY": "Corporate lattice seed keys synchronized across subnets",
     }.get(body.action_type, f"Action [{body.action_type}] executed")
+
+    action_label = f"{action_base} for {role_label}"
 
     status_label = {
         "FORCE_ROTATE": "REVOKED & ROTATED",
@@ -445,7 +819,7 @@ async def force_rotate(body: ForceRotateRequest) -> dict[str, Any]:
 
     return {
         "result": "success",
-        "message": f"{action_label} for '{body.user_id}' with Four-Eyes authorization ({body.secondary_approver}).",
+        "message": f"{action_label} with Four-Eyes authorization ({body.secondary_approver}).",
         "action_type": body.action_type,
         "rotation": rotation,
     }
@@ -564,11 +938,15 @@ async def copilot_chat(body: CopilotChatRequest) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Entrypoint (for `python main.py` convenience)
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
+    import sys
     import uvicorn
+
+    if "--seed" in sys.argv:
+        print("Seeding database telemetry fabric...")
+        seed_telemetry_fabric()
+        print("Seeding complete.")
+        sys.exit(0)
 
     uvicorn.run(
         "main:app",

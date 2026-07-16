@@ -52,7 +52,7 @@ const INITIAL_INCIDENTS: Incident[] = [
     timeAgo: '12m ago',
     severity: 'critical',
     tags: ['Data Leakage', 'Credential Abuse', 'Insider Threat'],
-    impactedEntity: 'v.patel.contractor',
+    impactedEntity: 'contractor_node_02',
     assignee: 'SOC_Operator_04',
     status: 'Investigating',
     attackChain: {
@@ -82,8 +82,8 @@ const INITIAL_INCIDENTS: Incident[] = [
 const INITIAL_SESSIONS: PrivilegedSession[] = [
   {
     id: 'sess-001',
-    user: 's.murphy.admin',
-    avatarInitials: 'SM',
+    user: 'admin_node_01',
+    avatarInitials: 'AD',
     ipAddress: '192.168.1.50',
     sourceDevice: 'Workstation-SM',
     resource: 'IT-COLO-CLUSTER-01',
@@ -103,8 +103,8 @@ const INITIAL_SESSIONS: PrivilegedSession[] = [
   },
   {
     id: 'sess-002',
-    user: 'v.patel.contractor',
-    avatarInitials: 'VP',
+    user: 'contractor_node_02',
+    avatarInitials: 'CO',
     ipAddress: '185.12.99.102',
     sourceDevice: 'Contractor-Laptop',
     resource: 'SV-PROD-DB-02',
@@ -124,8 +124,8 @@ const INITIAL_SESSIONS: PrivilegedSession[] = [
   },
   {
     id: 'sess-003',
-    user: 'compromised.root.node',
-    avatarInitials: 'CR',
+    user: 'root_service_node_03',
+    avatarInitials: 'RS',
     ipAddress: '10.0.12.3',
     sourceDevice: 'Root-Service-Acct',
     resource: 'OBSIDIAN-VAULT-PRIMARY',
@@ -147,7 +147,7 @@ const INITIAL_SESSIONS: PrivilegedSession[] = [
 
 const INITIAL_PROFILES: RiskProfile[] = [
   {
-    name: 's.murphy.admin',
+    name: 'admin_node_01',
     role: 'System Administrator • IT Operations',
     employeeId: 'EMP-9021',
     office: 'London Hub',
@@ -190,7 +190,7 @@ const INITIAL_PROFILES: RiskProfile[] = [
     ]
   },
   {
-    name: 'v.patel.contractor',
+    name: 'contractor_node_02',
     role: 'External Contractor • Data Analytics',
     employeeId: 'EMP-4831',
     office: 'Remote / Berlin',
@@ -233,7 +233,7 @@ const INITIAL_PROFILES: RiskProfile[] = [
     ]
   },
   {
-    name: 'compromised.root.node',
+    name: 'root_service_node_03',
     role: 'Root Service Account • Core Infrastructure',
     employeeId: 'SVC-0085',
     office: 'Global VPC',
@@ -444,17 +444,25 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // 2. Manage sessions view
     setSessions((prevSessions) => {
-      const initials = event.user_id
+      const initials = event.user_id === 'admin_node_01'
+        ? 'AD'
+        : event.user_id === 'contractor_node_02'
+        ? 'CO'
+        : event.user_id === 'root_service_node_03'
+        ? 'RS'
+        : event.user_id === 'intern_node_04'
+        ? 'IN'
+        : event.user_id
         ? event.user_id.split('.').map((p: string) => p[0].toUpperCase()).join('').substring(0, 2)
         : '??';
 
       const existingIndex = prevSessions.findIndex((s) => s.user === event.user_id);
       
       // Compute static assets for profiles
-      const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : event.user_id === 'c.vance.intern' ? '172.16.4.19' : '10.0.12.3';
-      const device = event.user_id === 's.murphy.admin' ? 'Workstation-SM' : event.user_id === 'v.patel.contractor' ? 'Contractor-Laptop' : event.user_id === 'c.vance.intern' ? 'Helpdesk-Terminal-04' : 'Root-Service-Acct';
-      const resourceType = event.user_id === 'compromised.root.node' ? 'key' : event.user_id === 'v.patel.contractor' ? 'database' : 'cluster';
-      const resource = event.user_id === 'compromised.root.node' ? 'OBSIDIAN-VAULT-PRIMARY' : event.user_id === 'v.patel.contractor' ? 'SV-PROD-DB-02' : event.user_id === 'c.vance.intern' ? 'db_admin.shadow_vault_backup' : 'IT-COLO-CLUSTER-01';
+      const ip = event.user_id === 'admin_node_01' ? '192.168.1.50' : event.user_id === 'contractor_node_02' ? '185.12.99.102' : event.user_id === 'intern_node_04' ? '172.16.4.19' : '10.0.12.3';
+      const device = event.user_id === 'admin_node_01' ? 'Workstation-SM' : event.user_id === 'contractor_node_02' ? 'Contractor-Laptop' : event.user_id === 'intern_node_04' ? 'Helpdesk-Terminal-04' : 'Root-Service-Acct';
+      const resourceType = event.user_id === 'root_service_node_03' ? 'key' : event.user_id === 'contractor_node_02' ? 'database' : 'cluster';
+      const resource = event.user_id === 'root_service_node_03' ? 'OBSIDIAN-VAULT-PRIMARY' : event.user_id === 'contractor_node_02' ? 'SV-PROD-DB-02' : event.user_id === 'intern_node_04' ? 'db_admin.shadow_vault_backup' : 'IT-COLO-CLUSTER-01';
 
       const logText = isHoneypot
         ? `[🍯 HONEYPOT TRIP] ${event.action} | Deterministic IoC breached!`
@@ -553,7 +561,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return inc;
           });
         } else {
-          const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : event.user_id === 'c.vance.intern' ? '172.16.4.19' : '10.0.12.3';
+          const ip = event.user_id === 'admin_node_01' ? '192.168.1.50' : event.user_id === 'contractor_node_02' ? '185.12.99.102' : event.user_id === 'intern_node_04' ? '172.16.4.19' : '10.0.12.3';
           const newInc: Incident = {
             id: incId,
             title: isHoneypot ? `CRITICAL HONEYPOT BREACH: ${event.user_id}` : isControlEvent ? 'Operator-Initiated Security Override' : `Active Threat: ${event.threat_classification || 'Insider Anomaly'}`,
@@ -610,7 +618,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             timestamp: timestampStr,
             eventType: isHoneypot ? 'Canary Honeypot Trip' : isAnomaly ? (event.threat_classification || 'Anomaly Trigger') : 'Operational Log',
             path: event.action.substring(0, 30),
-            sourceIp: prof.name === 's.murphy.admin' ? '192.168.1.50' : prof.name === 'v.patel.contractor' ? '185.12.99.102' : '10.0.12.3',
+            sourceIp: prof.name === 'admin_node_01' ? '192.168.1.50' : prof.name === 'contractor_node_02' ? '185.12.99.102' : '10.0.12.3',
             riskDelta: delta,
             severity: severity as any,
             isHoneypot: isHoneypot,
@@ -639,8 +647,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 5. Append attack map signals
     if (isAnomaly || isHoneypot) {
       setSignals((prev) => {
-        const ip = event.user_id === 's.murphy.admin' ? '192.168.1.50' : event.user_id === 'v.patel.contractor' ? '185.12.99.102' : '10.0.12.3';
-        const location = event.user_id === 'v.patel.contractor' ? 'Kiev, UA' : event.user_id === 'compromised.root.node' ? 'Beijing, CN' : 'Frankfurt, DE';
+        const ip = event.user_id === 'admin_node_01' ? '192.168.1.50' : event.user_id === 'contractor_node_02' ? '185.12.99.102' : '10.0.12.3';
+        const location = event.user_id === 'contractor_node_02' ? 'Kiev, UA' : event.user_id === 'root_service_node_03' ? 'Beijing, CN' : 'Frankfurt, DE';
         
         const newSig = {
           id: Date.now() + Math.random(),
@@ -848,7 +856,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setGenerationLogs((prev) => [...newLogs, ...prev]);
 
     setTimeout(() => {
-      forceRotateUser('s.murphy.admin', 'GENERATE_KEY', secondaryApprover);
+      forceRotateUser('admin_node_01', 'GENERATE_KEY', secondaryApprover);
       setIsGeneratingKey(false);
     }, 1200);
   };
