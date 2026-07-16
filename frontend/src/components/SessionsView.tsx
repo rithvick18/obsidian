@@ -16,11 +16,28 @@ import {
 } from 'lucide-react';
 import { PrivilegedSession } from '../types';
 
+const defaultSession: PrivilegedSession = {
+  id: 'N/A',
+  user: 'No Session Selected',
+  avatarInitials: '--',
+  ipAddress: '0.0.0.0',
+  sourceDevice: 'N/A',
+  resource: 'N/A',
+  resourceType: 'cluster',
+  duration: '0m',
+  riskIndex: 0,
+  riskText: 'LOW',
+  status: 'Terminated',
+  logs: [],
+  typingCadence: 0,
+  commandIntention: 0,
+};
+
 export default function SessionsView() {
   const [sessions, setSessions] = useState<PrivilegedSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
-  const selectedSession = sessions.find(sess => sess.id === selectedSessionId) || sessions[0];
+  const selectedSession = sessions.find(sess => sess.id === selectedSessionId) || sessions[0] || defaultSession;
 
   const handleTerminateSession = () => {
     setSessions(prevSessions => 

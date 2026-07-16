@@ -19,12 +19,29 @@ import {
 } from 'lucide-react';
 import { Incident } from '../types';
 
+const defaultIncident: Incident = {
+  id: 'N/A',
+  title: 'No Incident Selected',
+  timeAgo: '',
+  severity: 'medium',
+  tags: [],
+  impactedEntity: 'N/A',
+  assignee: 'Unassigned',
+  status: 'Investigating',
+  attackChain: {
+    node1: 'N/A',
+    node2: 'N/A',
+    node3: 'N/A',
+  },
+  timeline: [],
+};
+
 export default function IncidentsView() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [isolationRunning, setIsolationRunning] = useState<string | null>(null);
 
-  const selectedIncident = incidents.find(inc => inc.id === selectedIncidentId) || incidents[0];
+  const selectedIncident = incidents.find(inc => inc.id === selectedIncidentId) || incidents[0] || defaultIncident;
 
   const handleIsolateHost = (entityName: string) => {
     if (!selectedIncident) return;
@@ -187,7 +204,7 @@ export default function IncidentsView() {
                     : 'bg-error hover:bg-error/80 text-white'
                 }`}
               >
-                {isolationRunning === selectedIncident.impactedEntity ? (
+                {isolationRunning === selectedIncident?.impactedEntity ? (
                   <>
                     <RotateCw className="animate-spin" size={13} />
                     ISOLATING...
