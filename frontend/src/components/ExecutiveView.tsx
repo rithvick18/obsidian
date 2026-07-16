@@ -68,7 +68,7 @@ export default function ExecutiveView() {
           </div>
           <div>
             <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-xs">Quantum Readiness</p>
-            <h2 className="font-display-lg text-4xl font-bold mt-1 text-primary">88%</h2>
+            <h2 className="font-display-lg text-4xl font-bold mt-1 text-primary">{systemStatus ? "88%" : "0%"}</h2>
           </div>
           <div className="flex gap-1.5 mt-4">
             <div className="flex-1 h-8 bg-primary/20 border-t-2 border-primary/50 rounded-sm"></div>
@@ -86,7 +86,7 @@ export default function ExecutiveView() {
           </div>
           <div>
             <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-xs">Mean Response Time</p>
-            <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">1.8m</h2>
+            <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">{systemStatus ? "1.8m" : "0.0m"}</h2>
           </div>
           <div className="mt-4 flex items-end gap-1.5 h-10">
             <div className="w-3 h-1/2 bg-outline-variant rounded-t-sm"></div>
