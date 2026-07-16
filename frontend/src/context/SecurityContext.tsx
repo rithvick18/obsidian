@@ -344,7 +344,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       artifactId: 'BOOT-SIG-042',
       status: 'Signed',
       icon: 'shield',
-      risk_score: 15
+      risk_score: 15,
+      user_id: 'admin_node_01',
+      role: 'System Administrator',
+      department: 'IT Operations',
+      action: 'System Bootstrap Audit Signed',
+      resource: 'BOOT-SIG-042'
     },
     {
       timestamp: '11:15',
@@ -353,7 +358,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       artifactId: 'POL-ALN-109',
       status: 'Verified',
       icon: 'check_circle',
-      risk_score: 22
+      risk_score: 22,
+      user_id: 'contractor_node_02',
+      role: 'External Contractor',
+      department: 'Data Analytics',
+      action: 'Database Access Policy Alignment',
+      resource: 'POL-ALN-109'
     },
     {
       timestamp: '11:30',
@@ -362,7 +372,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       artifactId: 'REV-ACT-089',
       status: 'Critical',
       icon: 'alert_octagon',
-      risk_score: 85
+      risk_score: 85,
+      user_id: 'root_service_node_03',
+      role: 'Root Service Account',
+      department: 'Core Infrastructure',
+      action: 'Privileged Access Revocation Event',
+      resource: 'REV-ACT-089'
     },
     {
       timestamp: '11:45',
@@ -371,7 +386,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       artifactId: 'ROT-KEY-002',
       status: 'Signed',
       icon: 'refresh_ccw',
-      risk_score: 18
+      risk_score: 18,
+      user_id: 'admin_node_01',
+      role: 'System Administrator',
+      department: 'IT Operations',
+      action: 'Automatic HSM Key Rotation',
+      resource: 'ROT-KEY-002'
     },
     {
       timestamp: '12:00',
@@ -380,7 +400,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       artifactId: 'SCN-RES-412',
       status: 'Verified',
       icon: 'check_circle',
-      risk_score: 29
+      risk_score: 29,
+      user_id: 'intern_node_04',
+      role: 'Helpdesk Intern',
+      department: 'Tier 1 Support',
+      action: 'Compliance Telemetry Scan Verification',
+      resource: 'SCN-RES-412'
     }
   ]);
 
@@ -717,6 +742,31 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ...prev
       ]);
     }
+
+    // 7. Sync AuditEvents state
+    setAuditEvents((prev) => {
+      const exists = prev.some((e: any) => (e.id === event.event_id || e.event_id === event.event_id) && event.event_id);
+      if (exists) return prev;
+      
+      const newEvent: AuditEvent = {
+        timestamp: event.timestamp || new Date().toISOString(),
+        eventType: event.action || 'System Audit Event',
+        framework: event.framework || 'NIST-800-53',
+        artifactId: event.event_id || `AUD-${Math.floor(Math.random() * 9000 + 1000)}`,
+        status: event.status || 'Verified',
+        icon: event.icon || 'shield',
+        risk_score: event.risk_score || 0,
+        user_id: event.user_id,
+        role: event.role,
+        department: event.department,
+        action: event.action,
+        resource: event.resource,
+        is_honeypot: event.is_honeypot,
+        tamper_lock_signature: event.tamper_lock_signature,
+        risk_factors: event.risk_factors
+      };
+      return [newEvent, ...prev].slice(0, 100);
+    });
   };
 
   const forceRotateUser = async (userId: string, actionType: string = 'FORCE_ROTATE', secondaryApprover?: string): Promise<boolean> => {

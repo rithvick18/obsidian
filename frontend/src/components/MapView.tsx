@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Globe, 
@@ -13,22 +13,13 @@ import {
   RotateCw
 } from 'lucide-react';
 
-interface AttackSignal {
-  id: number;
-  origin: string;
-  target: string;
-  severity: 'critical' | 'high' | 'medium';
-  rate: string;
-}
-
 import { useSecurity } from '../context/SecurityContext';
 
 export default function MapView() {
-  const { signals } = useSecurity();
+  const { signals, auditEvents, systemStatus } = useSecurity();
   const [utcTime, setUtcTime] = useState('');
 
   useEffect(() => {
-    // Update live clock
     const updateTime = () => {
       const now = new Date();
       setUtcTime(now.toUTCString().replace('GMT', 'UTC'));
@@ -37,6 +28,47 @@ export default function MapView() {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // 1. Calculate dynamic statistics straight out of the context data matrices
+  const totalSignals = signals ? signals.length : 0;
+  const activeLockouts = systemStatus?.anomalies_deflected || 0;
+  
+  // Synthesize a live, moving threat velocity index
+  const dynamicThreatRate = totalSignals > 0 ? Math.round(totalSignals * 2.4 + 12) : 48;
+
+  // 2. Dynamic Location Vector Synthesis Engine
+  // Maps standard role node profiles onto topological grid points safely
+  const dynamicCoordinates = useMemo(() => {
+    const activeFeeds = auditEvents && auditEvents.length > 0 ? auditEvents : [];
+    
+    // Fallback coordinates if live logs are empty
+    const defaultCoords = [
+      { id: 'default-1', cx: 420, cy: 140, label: 'Core Networks Node', isCritical: false },
+      { id: 'default-2', cx: 580, cy: 260, label: 'Data Hub Boundary', isCritical: false }
+    ];
+
+    if (activeFeeds.length === 0) return defaultCoords;
+
+    // Pick out the 4 most recent unmitigated logs to map on the visualization plane
+    return activeFeeds.slice(0, 4).map((evt: any, idx: number) => {
+      let baseCX = 300 + (idx * 90);
+      let baseCY = 120 + (idx * 45);
+
+      // Distribute vectors dynamically using specific user node assignments
+      if (evt.user_id?.includes('admin')) { baseCX = 420; baseCY = 140; }
+      else if (evt.user_id?.includes('contractor')) { baseCX = 500; baseCY = 180; }
+      else if (evt.user_id?.includes('root')) { baseCX = 450; baseCY = 120; }
+      else if (evt.user_id?.includes('intern')) { baseCX = 580; baseCY = 260; }
+
+      return {
+        id: evt.id || `node-${idx}`,
+        cx: baseCX,
+        cy: baseCY,
+        label: evt.user_id || 'Infrastructure Node',
+        isCritical: evt.risk_score === 100 || evt.severity === 'critical'
+      };
+    });
+  }, [auditEvents]);
 
   return (
     <div className="space-y-6">
@@ -50,36 +82,48 @@ export default function MapView() {
         {/* Vector SVG Stylized Threat Connections Map */}
         <div className="absolute inset-0 flex items-center justify-center p-8 opacity-65 z-0">
           <svg className="w-full h-full max-w-4xl" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
-            {/* Soft background outlines for continents / global mesh */}
+            {/* Soft background mesh paths */}
             <path d="M150,120 Q160,100 220,130 T300,100" fill="none" stroke="rgba(66,71,84,0.15)" strokeWidth="1.5" />
             <path d="M400,150 Q450,110 520,160 T650,120" fill="none" stroke="rgba(66,71,84,0.15)" strokeWidth="1.5" />
             <path d="M200,240 Q250,280 320,250 T380,290" fill="none" stroke="rgba(66,71,84,0.15)" strokeWidth="1.5" />
 
-            {/* Glowing lines representing connections */}
-            {/* Connection 1: Frankfurt -> Chennai */}
-            <path d="M420,140 Q510,180 580,260" fill="none" stroke="#adc6ff" strokeWidth="1.5" className="animate-pulse-slow" />
-            <path d="M420,140 Q510,180 580,260" fill="none" stroke="#4edea3" strokeWidth="1" strokeDasharray="6 4" className="animate-flow" />
+            {/* Render connection links between nodes dynamically if multiple items exist */}
+            {dynamicCoordinates.length >= 2 && (
+              <>
+                <path 
+                  d={`M ${dynamicCoordinates[0].cx},${dynamicCoordinates[0].cy} Q 480,180 ${dynamicCoordinates[dynamicCoordinates.length - 1].cx},${dynamicCoordinates[dynamicCoordinates.length - 1].cy}`} 
+                  fill="none" 
+                  stroke={dynamicCoordinates[0].isCritical ? "#ef4444" : "#adc6ff"} 
+                  strokeWidth="1.5" 
+                  className="animate-pulse-slow" 
+                />
+                <path 
+                  d={`M ${dynamicCoordinates[0].cx},${dynamicCoordinates[0].cy} Q 480,180 ${dynamicCoordinates[dynamicCoordinates.length - 1].cx},${dynamicCoordinates[dynamicCoordinates.length - 1].cy}`} 
+                  fill="none" 
+                  stroke={dynamicCoordinates[0].isCritical ? "#ef4444" : "#4edea3"} 
+                  strokeWidth="1" 
+                  strokeDasharray="6 4" 
+                  className="animate-flow" 
+                />
+              </>
+            )}
 
-            {/* Connection 2: Kiev -> San Jose */}
-            <path d="M450,120 Q300,100 200,180" fill="none" stroke="#ef4444" strokeWidth="1.5" className="animate-pulse-slow" />
-            <path d="M450,120 Q300,100 200,180" fill="none" stroke="#ef4444" strokeWidth="1" strokeDasharray="5 5" className="animate-flow" />
-
-            {/* Glowing city beacons */}
-            {/* San Jose */}
-            <circle cx="200" cy="180" r="4" fill="#4edea3" className="glow-cyan" />
-            <circle cx="200" cy="180" r="12" fill="none" stroke="#4edea3" strokeWidth="1" className="animate-ping" style={{ animationDuration: '3s' }} />
-
-            {/* Kiev */}
-            <circle cx="450" cy="120" r="4.5" fill="#ef4444" />
-            <circle cx="450" cy="120" r="14" fill="none" stroke="#ef4444" strokeWidth="1" className="animate-ping" style={{ animationDuration: '2s' }} />
-
-            {/* Frankfurt */}
-            <circle cx="420" cy="140" r="4" fill="#ef4444" />
-            <circle cx="420" cy="140" r="12" fill="none" stroke="#ef4444" strokeWidth="1" className="animate-ping" style={{ animationDuration: '2.5s' }} />
-
-            {/* Chennai */}
-            <circle cx="580" cy="260" r="4" fill="#4edea3" />
-            <circle cx="580" cy="260" r="12" fill="none" stroke="#4edea3" strokeWidth="1" className="animate-ping" style={{ animationDuration: '4s' }} />
+            {/* Project localized city coordinates maps out dynamically */}
+            {dynamicCoordinates.map((node: any, idx: number) => (
+              <g key={node.id || idx}>
+                <circle cx={node.cx} cy={node.cy} r={node.isCritical ? "4.5" : "4"} fill={node.isCritical ? "#ef4444" : "#4edea3"} className={node.isCritical ? "glow-red" : "glow-cyan"} />
+                <circle 
+                  cx={node.cx} 
+                  cy={node.cy} 
+                  r={node.isCritical ? "14" : "12"} 
+                  fill="none" 
+                  stroke={node.isCritical ? "#ef4444" : "#4edea3"} 
+                  strokeWidth="1" 
+                  className="animate-ping" 
+                  style={{ animationDuration: `${2 + idx * 0.5}s` }} 
+                />
+              </g>
+            ))}
           </svg>
         </div>
 
@@ -107,12 +151,12 @@ export default function MapView() {
           </h4>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="p-2 bg-bg-base rounded border border-outline-variant/60">
-              <span className="text-[10px] text-on-surface-variant uppercase">Threat Rate</span>
-              <span className="font-mono text-error font-bold block mt-0.5">48/Min</span>
+              <span className="text-[10px] text-on-surface-variant uppercase font-mono">Threat Weight</span>
+              <span className="font-mono text-error font-bold block mt-0.5">{dynamicThreatRate}/Min</span>
             </div>
             <div className="p-2 bg-bg-base rounded border border-outline-variant/60">
-              <span className="text-[10px] text-on-surface-variant uppercase">Lockouts Applied</span>
-              <span className="font-mono text-secondary font-bold block mt-0.5">14 Active</span>
+              <span className="text-[10px] text-on-surface-variant uppercase font-mono">Ledger Lockouts</span>
+              <span className="font-mono text-secondary font-bold block mt-0.5">{activeLockouts} Active</span>
             </div>
           </div>
         </div>
@@ -149,25 +193,33 @@ export default function MapView() {
               </tr>
             </thead>
             <tbody className="text-sm font-sans">
-              {signals.map((sig, idx) => (
-                <tr key={sig.id} className="border-b border-outline-variant/30 hover:bg-surface-container-high/15 transition-colors">
-                  <td className="p-4 font-mono text-xs text-on-surface-variant">{sig.id.toString().substring(5, 12)}</td>
-                  <td className="p-4 font-bold text-on-surface">{sig.origin}</td>
-                  <td className="p-4 font-mono text-xs text-primary">{sig.target}</td>
-                  <td className="p-4 font-mono text-xs text-on-surface-variant">{sig.rate}</td>
-                  <td className="p-4 text-right">
-                    <span className={`inline-block text-[9px] font-mono font-bold px-2.5 py-0.5 rounded ${
-                      sig.severity === 'critical' 
-                        ? 'bg-error-container/20 text-error border border-error/20' 
-                        : sig.severity === 'high'
-                        ? 'bg-amber-500/20 text-amber-500 border border-amber-500/20'
-                        : 'bg-primary/20 text-primary border border-primary/20'
-                    }`}>
-                      {sig.severity.toUpperCase()}
-                    </span>
+              {signals && signals.length > 0 ? (
+                signals.map((sig: any) => (
+                  <tr key={sig.id} className="border-b border-outline-variant/30 hover:bg-surface-container-high/15 transition-colors">
+                    <td className="p-4 font-mono text-xs text-on-surface-variant">
+                      {sig.id ? sig.id.toString().substring(0, 7) : 'SIG-TRK'}
+                    </td>
+                    <td className="p-4 font-bold text-on-surface">{sig.origin || 'Internal Gateway'}</td>
+                    <td className="p-4 font-mono text-xs text-primary">{sig.target || 'Infrastructure Subnet'}</td>
+                    <td className="p-4 font-mono text-xs text-on-surface-variant">{sig.rate || 'Low'}</td>
+                    <td className="p-4 text-right">
+                      <span className={`inline-block text-[9px] font-mono font-bold px-2.5 py-0.5 rounded ${
+                        sig.severity === 'critical' 
+                          ? 'bg-error-container/20 text-error border border-error/20' 
+                          : 'bg-primary/20 text-primary border border-primary/20'
+                      }`}>
+                        {(sig.severity || 'medium').toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-outline-variant/30">
+                  <td className="p-4 font-mono text-xs text-secondary" colSpan={5}>
+                    No active adversarial reconnaissance vectors logged in this network window.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

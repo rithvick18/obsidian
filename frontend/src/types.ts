@@ -66,6 +66,14 @@ export interface AuditEvent {
   status: 'Verified' | 'Critical' | 'Pending' | 'Signed';
   icon: string;
   risk_score?: number;
+  user_id?: string;
+  role?: string;
+  department?: string;
+  action?: string;
+  resource?: string;
+  is_honeypot?: boolean;
+  tamper_lock_signature?: string;
+  risk_factors?: any;
 }
 
 export interface RiskFactor {
