@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Incident, PrivilegedSession, RiskProfile, AlgorithmPerformance, AuditEvent } from '../types';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+
 interface SystemStatus {
   engine: string;
   version: string;
@@ -412,7 +415,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // REST API status poller
   const fetchSystemStatus = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/system/status');
+      const res = await fetch(`${API_URL}/api/v1/system/status`);
       if (res.ok) {
         const data = await res.json();
         setSystemStatus(data);
@@ -435,8 +438,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let isComponentMounted = true;
 
     const connectWebSocket = () => {
-      console.log('Establishing connection to Obsidian Security Engine at ws://localhost:8000/ws/logs...');
-      ws = new WebSocket('ws://localhost:8000/ws/logs');
+      console.log(`Establishing connection to Obsidian Security Engine at ${WS_URL}/ws/logs...`);
+      ws = new WebSocket(`${WS_URL}/ws/logs`);
 
       ws.onopen = () => {
         if (!isComponentMounted) return;
@@ -778,7 +781,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/mitigate/force-rotate', {
+      const res = await fetch(`${API_URL}/api/v1/mitigate/force-rotate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -953,7 +956,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const sendCopilotMessage = async (message: string): Promise<string> => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/copilot/chat', {
+      const res = await fetch(`${API_URL}/api/v1/copilot/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -967,7 +970,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (e) {
       console.error('Failed to contact Copilot Chat REST endpoint:', e);
     }
-    return `Error: Could not reach the Obsidian XDR Copilot backend at http://localhost:8000. Please verify main.py is running.`;
+    return `Error: Could not reach the Obsidian XDR Copilot backend at ${API_URL}. Please verify main.py is running.`;
   };
 
   return (

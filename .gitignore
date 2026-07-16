@@ -121,3 +121,7 @@ instance/
 
 # Frontend specific
 *.tsbuildinfo
+
+# Vercel
+.vercel
+vercel.json
