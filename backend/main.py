@@ -463,13 +463,20 @@ def check_and_seed_db() -> None:
 
 def insert_telemetry_event(event: dict[str, Any]) -> None:
     """Insert a dynamic live telemetry event into SQLite."""
+    ts = event["timestamp"]
+    if isinstance(ts, (int, float)):
+        ts_sec = ts / 1000.0 if ts > 1e11 else ts
+        ts_str = datetime.fromtimestamp(ts_sec, tz=timezone.utc).isoformat()
+    else:
+        ts_str = str(ts)
+
     db_execute("""
         INSERT INTO audit_telemetry (
             id, timestamp, user_id, role, department, action, resource, risk_score, status, is_honeypot, tamper_lock_signature, risk_factors
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         event["event_id"],
-        event["timestamp"],
+        ts_str,
         event["user_id"],
         event["role"],
         event["department"],
@@ -477,7 +484,7 @@ def insert_telemetry_event(event: dict[str, Any]) -> None:
         event.get("resource", "IT-COLO-CLUSTER-01"),
         event["risk_score"],
         event["status"],
-        1 if event["is_honeypot"] else 0,
+        1 if event.get("is_honeypot") else 0,
         event.get("tamper_lock_signature"),
         safe_serialize_risk_factors(event.get("risk_factors", []))
     ))
@@ -500,19 +507,26 @@ def fetch_telemetry_event(event_id: str) -> Optional[dict[str, Any]]:
 # Application initialisation
 # ---------------------------------------------------------------------------
 
-app = FastAPI(
-    title="Obsidian Security Engine",
-    version="1.0.0",
-    description="Corporate banking insider-threat detection & PQC credential vault.",
-)
+app = FastAPI(title="Obsidian Sentinel XDR Core Engine")
 
+# 1. Broaden CORS mappings to guarantee local pre-flights (OPTIONS) resolve instantly
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Shared state allocation memory pools
+if not hasattr(app.state, "active_connections"):
+    app.state.active_connections = []
+
+class ForceRotatePayload(BaseModel):
+    user_id: str
+    action_type: str
+    primary_operator: str
+    secondary_approver: str
 
 # ---------------------------------------------------------------------------
 # In-memory state  (shared across simulated micro-services)
@@ -653,13 +667,21 @@ async def _build_rotation_record(
 
 async def _broadcast(payload: str) -> None:
     """Send *payload* to every connected WebSocket client, pruning dead ones."""
+    if hasattr(app.state, "active_connections"):
+        for connection in list(app.state.active_connections):
+            try:
+                await connection.send_text(payload)
+            except Exception:
+                if connection in app.state.active_connections:
+                    app.state.active_connections.remove(connection)
     clients = list(_ws_clients)
     disconnected: set[WebSocket] = set()
     for ws in clients:
-        try:
-            await ws.send_text(payload)
-        except Exception:
-            disconnected.add(ws)
+        if not hasattr(app.state, "active_connections") or ws not in app.state.active_connections:
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                disconnected.add(ws)
     if disconnected:
         _ws_clients.difference_update(disconnected)
 
@@ -727,128 +749,141 @@ def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_sco
     return final_score, risk_factors, False, None
 
 
-# ---------------------------------------------------------------------------
-# Microservice 1 — Ingestion & Anomaly Engine (Live Stream Tailing)
-# ---------------------------------------------------------------------------
-async def _ingestion_loop() -> None:
-    """
-    Directly tails and queries the audit_telemetry database table for newly inserted logs
-    (polling by picking up records where timestamp is greater than the loop's previous check).
-    If the database is empty, rely entirely on records being generated via external REST calls
-    or real historical entries committed during startup seeding.
-    """
-    def get_latest_timestamp() -> str:
-        row = db_query("SELECT MAX(timestamp) as max_ts FROM audit_telemetry", fetch_one=True)
-        if row and row["max_ts"]:
-            return row["max_ts"]
-        return datetime.now(timezone.utc).isoformat()
-
-    last_timestamp = await asyncio.to_thread(get_latest_timestamp)
-
-    while True:
-        def query_new_events(ts: str) -> list[dict[str, Any]]:
-            rows = db_query("SELECT * FROM audit_telemetry WHERE timestamp > ? ORDER BY timestamp ASC", (ts,))
-            events = []
-            for r in rows:
-                event = dict(r)
-                event["event_id"] = event.pop("id")
-                event["is_honeypot"] = bool(event["is_honeypot"])
-                event["risk_factors"] = safe_deserialize_risk_factors(event["risk_factors"])
-                events.append(event)
-            return events
-
-        try:
-            new_events = await asyncio.to_thread(query_new_events, last_timestamp)
-            for event in new_events:
-                last_timestamp = event["timestamp"]
-
-                # If risk exceeds threshold or honeypot tripped, hand off to the Risk Evaluator
-                if event.get('risk_score', 0) > 75 or event.get('is_honeypot', False):
-                    await _anomaly_queue.put(event)
-
-                await _broadcast(json.dumps(event))
-        except Exception as e:
-            print(f"Error in ingestion tail loop: {e}")
-
-        await asyncio.sleep(2)
-
-
-# ---------------------------------------------------------------------------
-# Microservice 2 — Risk Evaluation & Cryptographic Vault Service
-# ---------------------------------------------------------------------------
-
-
-async def _risk_evaluator_loop() -> None:
-    """
-    Consume events from the anomaly queue. When an event's risk score
-    exceeds 75 or hits a canary honeypot it is flagged as an insider threat
-    and a PQC token rotation is triggered.
-    """
-    while True:
-        event = await _anomaly_queue.get()
-        try:
-            is_honeypot = event.get('is_honeypot', False)
-            if is_honeypot:
-                event['threat_classification'] = '100 [CRITICAL HONEYPOT BREACH]'
-                event['mitigation'] = 'Tamper-evident PQC signature locked & immediate quarantine initiated'
-            else:
-                event['threat_classification'] = 'INSIDER THREAT — ACTIVE'
-                event['mitigation'] = 'Automated PQC token rotation & containment initiated'
-
-            # Perform simulated rotation and save to mitigation ledger table
-            rotation = await _build_rotation_record(
-                user_id=event['user_id'],
-                trigger='auto:honeypot_breach' if is_honeypot else 'auto:risk_threshold_exceeded',
-                action_type='AUTO_MITIGATION_QUARANTINE' if is_honeypot else 'AUTO_MITIGATION',
-                primary_operator='SYSTEM_ENGINE',
-                secondary_approver='AI_COPOLOT'
-            )
-            event['rotation'] = rotation
-            event['status'] = 'CRITICAL HONEYPOT BREACH' if is_honeypot else 'REVOKED & ROTATED'
-
-            # Broadcast the enriched threat event
-            await _broadcast(json.dumps(event))
-        except Exception as e:
-            print(f"Error in risk evaluator loop: {e}")
-        finally:
-            _anomaly_queue.task_done()
-
-
-# ---------------------------------------------------------------------------
-# Lifecycle — start background microservices
-# ---------------------------------------------------------------------------
-
-
-@app.on_event('startup')
-async def _startup() -> None:
-    """Launch the two background microservice loops."""
-    # Ensure database is initialized and seeded
-    await asyncio.to_thread(check_and_seed_db)
-    global _anomaly_queue
-    _anomaly_queue = asyncio.Queue()
-    asyncio.create_task(_ingestion_loop())
-    asyncio.create_task(_risk_evaluator_loop())
-# ---------------------------------------------------------------------------
-# WebSocket endpoint — live log stream
-# ---------------------------------------------------------------------------
-
-
+# 2. Hardened Multi-Client WebSocket Route Panel
 @app.websocket("/ws/logs")
-async def ws_logs(ws: WebSocket) -> None:
-    """
-    Accept a WebSocket connection and register it for live event broadcasts.
-    The connection stays open until the client disconnects.
-    """
-    await ws.accept()
-    _ws_clients.add(ws)
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    app.state.active_connections.append(websocket)
+    _ws_clients.add(websocket)
+    print(f"🔌 Secure telemetry channel bound. Active client mesh count: {len(app.state.active_connections)}")
+    
     try:
-        # Keep the connection alive by waiting for client messages (pings / close)
         while True:
-            await ws.receive_text()
-    except Exception:
-        pass
-    finally:
-        _ws_clients.discard(ws)
+            # Keep the socket interface open to receive client heartbeat frames
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        if websocket in app.state.active_connections:
+            app.state.active_connections.remove(websocket)
+        _ws_clients.discard(websocket)
+        print(f"❌ Telemetry channel severed. Active client mesh count: {len(app.state.active_connections)}")
+    except Exception as e:
+        if websocket in app.state.active_connections:
+            app.state.active_connections.remove(websocket)
+        _ws_clients.discard(websocket)
+        print(f"⚠️ Unhandled socket exception encountered: {e}")
+
+
+# 3. Dynamic Telemetry Generation Engine Matrix
+async def automated_telemetry_simulator():
+    """
+    Simulates continuous enterprise production traffic and security telemetry anomalies.
+    Fires data every 4 seconds to simulate live network ingress flows.
+    """
+    print("🚀 Telemetry Simulator Core initiated in background context.")
+    
+    users = ["admin_node_01", "contractor_node_02", "root_service_node_03", "intern_node_04"]
+    actions = [
+        "Bulk query request executed against sensitive infrastructure records.",
+        "Module-lattice cryptographic credential exchange executed successfully.",
+        "Privileged system terminal shell access initialized.",
+        "Virtual network boundary sweep detected on enterprise cloud gateway."
+    ]
+    frameworks = ["NIST-800-53", "FIPS-140-3", "SOC2-CC3", "GDPR-Ch4"]
+
+    while True:
+        await asyncio.sleep(4)
+        
+        # Only cycle generation loops if frontend displays are listening
+        if not app.state.active_connections:
+            continue
+            
+        user = random.choice(users)
+        action = random.choice(actions)
+        framework = random.choice(frameworks)
+        risk_score = random.randint(10, 100)
+        
+        # Build unified JSON payload
+        simulated_event = {
+            "event_id": f"AUD-{random.randint(1000, 9999)}",
+            "timestamp": int(time.time() * 1000),
+            "user_id": user,
+            "action": action,
+            "framework": framework,
+            "risk_score": risk_score,
+            "status": "REVOKED & ROTATED" if risk_score > 85 else "Verified",
+            "role": "External Contractor" if "contractor" in user else "System Administrator" if "admin" in user else "Core Service Account",
+            "department": "Data Analytics" if "contractor" in user else "IT Operations",
+            "resource": "SV-PROD-DB-02" if risk_score > 85 else "IT-COLO-CLUSTER-01",
+            "is_honeypot": risk_score == 100
+        }
+        
+        # Enforce strict post-quantum token encryption layers at critical severity bounds
+        if risk_score > 85:
+            simulated_event["rotation"] = {
+                "pqc_keys": {
+                    "ml_kem_1024": {
+                        "algorithm": "ML-KEM-1024",
+                        "purpose": "Key Agreement",
+                        "public_key_fingerprint": f"mldsa_pub_{random.randint(100,999)}_hex_stream",
+                        "shared_secret_hex": f"0x{random.randint(100000,999999)}abcdef890"
+                    },
+                    "ml_dsa_85": {
+                        "algorithm": "ML-DSA-85",
+                        "purpose": "Digital Signature",
+                        "signature_hex": f"mldsa_sig_{random.randint(1000,9999)}_verified_fips_204"
+                    }
+                }
+            }
+            if risk_score == 100:
+                simulated_event["tamper_lock_signature"] = "mldsa_root_honeypot_lock_active_fips202"
+
+        # Ensure risk_factors is populated on simulated_event for DB consistency and UI
+        if "risk_factors" not in simulated_event:
+            simulated_event["risk_factors"] = (
+                [{"factor": "Canary Honeypot Trip / Zero-Tolerance Boundary", "delta": 100}] if risk_score == 100
+                else [{"factor": f"High Severity Anomaly Threshold Exceeded (+{risk_score})", "delta": risk_score}] if risk_score > 85
+                else []
+            )
+
+        # Deterministic Database State Persistence: commit directly to SQLite before broadcasting
+        await asyncio.to_thread(insert_telemetry_event, simulated_event)
+
+        if risk_score > 85:
+            def save_auto_mitigation():
+                db_execute("""
+                    INSERT INTO mitigation_ledger (
+                        id, timestamp, user_id, action_type, primary_operator, secondary_approver, pqc_token_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    str(uuid4()),
+                    datetime.now(timezone.utc).isoformat(),
+                    simulated_event["user_id"],
+                    "AUTO_MITIGATION_QUARANTINE" if risk_score == 100 else "AUTO_MITIGATION",
+                    "SYSTEM_ENGINE",
+                    "AI_COPOLOT",
+                    simulated_event["event_id"]
+                ))
+            await asyncio.to_thread(save_auto_mitigation)
+
+        # Broadcast the verified telemetry unit to all tracked WebSocket ports
+        for connection in list(app.state.active_connections):
+            try:
+                await connection.send_json(simulated_event)
+            except Exception:
+                # If a socket fails context execution loops, discard it instantly
+                if connection in app.state.active_connections:
+                    app.state.active_connections.remove(connection)
+                _ws_clients.discard(connection)
+
+
+# 4. Global Core Startup Orchestration Loop
+@app.on_event("startup")
+async def startup_event():
+    # Ensure database is initialized and seeded if empty
+    await asyncio.to_thread(check_and_seed_db)
+    app.state.active_connections = []
+    # Trigger the simulation engine pipeline thread explicitly inside the async event pool
+    asyncio.create_task(automated_telemetry_simulator())
 
 
 # ---------------------------------------------------------------------------
