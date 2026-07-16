@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -194,7 +194,7 @@ async def _broadcast(payload: str) -> None:
     _ws_clients.difference_update(disconnected)
 
 
-def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_score: int) -> tuple[int, list[dict[str, Any]], bool, str | None]:
+def _calculate_role_distance_risk(user_id: str, role: str, action: str, base_score: int) -> tuple[int, list[dict[str, Any]], bool, Optional[str]]:
     """
     Calculate dynamic graph-based role distance risk score & check for honeypot trips.
     Returns: (final_risk_score, risk_factors_list, is_honeypot, tamper_lock_signature)
@@ -390,7 +390,7 @@ class ForceRotateRequest(BaseModel):
     user_id: str
     action_type: str = "FORCE_ROTATE"  # FORCE_ROTATE, ISOLATE_HOST, TERMINATE_SESSION, GENERATE_KEY
     primary_operator: str = "SOC_Operator_04"
-    secondary_approver: str | None = None
+    secondary_approver: Optional[str] = None
 
 
 @app.post("/api/v1/mitigate/force-rotate")
