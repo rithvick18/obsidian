@@ -15,20 +15,7 @@ import {
 } from 'lucide-react';
 import { useSecurity } from '../context/SecurityContext';
 
-const defaultSession: any = {
-  id: 'SYSTEM-INIT',
-  user: 'admin_node_01',
-  avatarInitials: 'AD',
-  ipAddress: '192.168.1.1',
-  sourceDevice: 'MacBook Air M4',
-  resource: 'Production SWIFT API Gateway',
-  resourceType: 'cluster',
-  duration: 'Active',
-  status: 'SECURE',
-  logs: ['[SESSION START] Secure audit connection verified via SQLite backend fabric.'],
-  typingCadence: 92,
-  commandIntention: 98,
-};
+// defaultSession mockup scrubbed for zero-state compliance
 
 export default function SessionsView() {
   const { auditEvents, terminateSession, flagSession, forceRotateUser, systemStatus } = useSecurity();
@@ -39,7 +26,7 @@ export default function SessionsView() {
     const activeFeeds = auditEvents && auditEvents.length > 0 ? auditEvents : [];
     
     if (activeFeeds.length === 0) {
-      return [defaultSession];
+      return [];
     }
 
     // Pick unique user node sessions to plot out in the navigation panel list
@@ -100,7 +87,7 @@ export default function SessionsView() {
     return Object.values(mapped);
   }, [auditEvents]);
 
-  const selectedSession = activePipelines.find(sess => sess.id === selectedSessionId) || activePipelines[0] || defaultSession;
+  const selectedSession = activePipelines.find(sess => sess.id === selectedSessionId) || activePipelines[0] || undefined;
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
@@ -118,7 +105,12 @@ export default function SessionsView() {
         </div>
 
         <div className="space-y-3.5 max-h-[640px] overflow-y-auto pr-1">
-          {activePipelines.map((sess) => {
+          {activePipelines.length === 0 ? (
+            <div className="glass-panel p-6 rounded-xl text-center text-xs text-on-surface-variant font-mono leading-relaxed">
+              System telemetry pipeline empty — awaiting ingress core status.
+            </div>
+          ) : (
+            activePipelines.map((sess) => {
             const isSelected = sess.id === selectedSessionId;
             const displayUserLabel = sess.user.replace('_', ' ');
 
@@ -176,13 +168,24 @@ export default function SessionsView() {
                 </div>
               </div>
             );
-          })}
+            })
+          )}
         </div>
       </div>
 
       {/* Right Column: Console terminal & controls */}
       <div className="col-span-12 xl:col-span-7 flex flex-col gap-6">
-        <div className="glass-panel rounded-xl p-6 relative overflow-hidden flex-1 flex flex-col justify-between">
+        {selectedSession === undefined ? (
+          <div className="glass-panel rounded-xl p-8 flex flex-col items-center justify-center text-center h-full min-h-[400px]">
+            <Terminal size={48} className="text-on-surface-variant/40 mb-4 animate-pulse" />
+            <h3 className="font-headline-sm text-base font-bold text-on-surface mb-2">Live Session Forensics</h3>
+            <p className="text-sm font-mono text-on-surface-variant max-w-md leading-relaxed">
+              No active session selected.<br />
+              System telemetry pipeline empty — awaiting ingress core status.
+            </p>
+          </div>
+        ) : (
+          <div className="glass-panel rounded-xl p-6 relative overflow-hidden flex-1 flex flex-col justify-between">
           
           <div>
             <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4 border-b border-outline-variant/50 pb-5 mb-5">
@@ -313,10 +316,11 @@ export default function SessionsView() {
             </div>
           </div>
 
-          <p className="mt-4 text-[10px] text-on-surface-variant font-mono">
-            * All terminal session activities are archived in offline storage and synchronized with SOC log repositories automatically.
-          </p>
-        </div>
+            <p className="mt-4 text-[10px] text-on-surface-variant font-mono">
+              * All terminal session activities are archived in offline storage and synchronized with SOC log repositories automatically.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

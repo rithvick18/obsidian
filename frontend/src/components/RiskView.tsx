@@ -17,25 +17,26 @@ import { useSecurity } from '../context/SecurityContext';
 
 export default function RiskView() {
   const { auditEvents, forceRotateUser, systemStatus } = useSecurity();
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('contractor_node_02');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>('');
 
   // 1. Core Data Aggregation Logic: Extract unique structural node IDs from the real database feed
   const uniqueNodes = useMemo(() => {
     if (!auditEvents || auditEvents.length === 0) {
-      return ['admin_node_01', 'contractor_node_02', 'root_service_node_03', 'intern_node_04'];
+      return [];
     }
     const nodes = new Set<string>();
     auditEvents.forEach((evt: any) => {
       if (evt.user_id) nodes.add(evt.user_id);
     });
-    // Ensure standard node blueprints are present if logs are rolling
-    ['admin_node_01', 'contractor_node_02', 'root_service_node_03', 'intern_node_04'].forEach(n => nodes.add(n));
     return Array.from(nodes);
   }, [auditEvents]);
 
+  const activeNodeId = selectedNodeId || uniqueNodes[0] || '';
+
   // 2. Dynamic Synthesis Engine: Transform flat DB records into structural operational statistics
   const dynamicNodeProfile = useMemo(() => {
-    const matchingLogs = auditEvents.filter((evt: any) => evt.user_id === selectedNodeId);
+    if (!activeNodeId) return null;
+    const matchingLogs = auditEvents.filter((evt: any) => evt.user_id === activeNodeId);
     
     // Default baseline parameters if evaluating a clean node record
     let baselineTrust = 100;
@@ -49,20 +50,15 @@ export default function RiskView() {
       baselineTrust = Math.max(5, 100 - highestRisk);
       baselineRole = matchingLogs[0].role || baselineRole;
       baselineDept = matchingLogs[0].department || baselineDept;
-    } else {
-      // Populate programmatic metrics based on node classifications if logs haven't hit yet
-      if (selectedNodeId.includes('admin')) { baselineTrust = 92; baselineRole = 'System Administrator'; baselineDept = 'IT Operations'; }
-      if (selectedNodeId.includes('contractor')) { baselineTrust = 35; baselineRole = 'External Contractor'; baselineDept = 'Data Analytics'; anomalyCount = 3; }
-      if (selectedNodeId.includes('intern')) { baselineTrust = 5; baselineRole = 'Helpdesk Intern'; baselineDept = 'Tier 1 Support'; anomalyCount = 1; }
     }
 
     // Mathematically generate risk radar coordinate parameters directly from threat properties
     const radar = {
       loginRisk: baselineTrust < 50 ? 85 : 12,
       accessPattern: anomalyCount > 0 ? Math.min(95, anomalyCount * 30 + 10) : 15,
-      deviceTrust: selectedNodeId.includes('contractor') ? 65 : 10,
+      deviceTrust: activeNodeId.includes('contractor') ? 65 : 10,
       behaviorScore: baselineTrust < 40 ? 90 : 20,
-      networkSecurity: selectedNodeId.includes('admin') ? 15 : 45,
+      networkSecurity: activeNodeId.includes('admin') ? 15 : 45,
       appIntegrity: baselineTrust === 5 ? 98 : 10,
     };
 
@@ -99,9 +95,9 @@ export default function RiskView() {
     }
 
     return {
-      name: selectedNodeId,
+      name: activeNodeId,
       role: `${baselineRole} • ${baselineDept}`,
-      employeeId: `ID-${selectedNodeId.substring(0, 4).toUpperCase()}-${Math.floor(Math.random() * 9000 + 1000)}`,
+      employeeId: `ID-${activeNodeId.substring(0, 4).toUpperCase()}-${Math.floor(Math.random() * 9000 + 1000)}`,
       office: 'Coimbatore Banking Hub',
       trustScore: baselineTrust,
       anomalySummary: anomalyCount > 0 
@@ -111,7 +107,7 @@ export default function RiskView() {
       heatmap,
       telemetry
     };
-  }, [selectedNodeId, auditEvents]);
+  }, [activeNodeId, auditEvents]);
 
   // Helper calculation vectors generating pentagram radar structures mapping coordinates around center (50, 50)
   const calculateRadarPath = (r: typeof dynamicNodeProfile.radar) => {
@@ -154,13 +150,27 @@ export default function RiskView() {
     return points.join(' ');
   };
 
+  if (uniqueNodes.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="glass-panel p-8 rounded-xl text-center flex flex-col items-center justify-center min-h-[400px]">
+          <ShieldAlert size={48} className="text-on-surface-variant/40 mb-4 animate-pulse" />
+          <h3 className="font-headline-sm text-base font-bold text-on-surface mb-2">Node Security Profile Analysis</h3>
+          <p className="text-sm font-mono text-on-surface-variant max-w-md leading-relaxed">
+            System telemetry pipeline empty — awaiting ingress core status. Run local FastAPI services to connect the SQLite db telemetry stream.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       
       {/* Switch Profiles header row */}
       <div className="flex gap-4 border-b border-outline-variant pb-4 overflow-x-auto">
         {uniqueNodes.map((nodeId) => {
-          const isSelected = nodeId === selectedNodeId;
+          const isSelected = nodeId === activeNodeId;
           const displayLabel = nodeId.replace('_', ' ');
           
           return (

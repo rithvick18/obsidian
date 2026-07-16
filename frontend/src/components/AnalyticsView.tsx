@@ -48,7 +48,7 @@ export default function AnalyticsView() {
   }, []);
 
   // 2. Drive metrics dynamically from DB status states
-  const totalLogs = systemStatus?.sessions_monitored || events.length || 150;
+  const totalLogs = systemStatus?.sessions_monitored || events.length || 0;
   const totalDeflections = systemStatus?.anomalies_deflected || 0;
   
   const dynamicPeak = Math.min(999, Math.round(totalLogs * 3.2 + 1.5));
@@ -58,13 +58,18 @@ export default function AnalyticsView() {
 
   // 3. Dynamic Path Computation Layer (Eliminating the static SVG trace)
   const svgPaths = useMemo(() => {
-    // Fallback data structure mapping historical values if real logs stream slowly
-    const baselinePoints = [40, 55, 35, 75, 45]; 
-    
     // Extract recent risk values from real table inputs if available
-    const points = events.length >= 5 
-      ? events.slice(0, 5).reverse().map(e => Math.min(95, Math.max(10, e.risk_score || 20)))
-      : baselinePoints;
+    const points = events.length > 0
+      ? events.slice(0, 5).reverse().map(e => Math.min(95, Math.max(10, e.risk_score || 0)))
+      : [];
+
+    if (points.length === 0) {
+      return {
+        area: '',
+        line: '',
+        dots: []
+      };
+    }
 
     const width = 400;
     const height = 120;
@@ -73,7 +78,7 @@ export default function AnalyticsView() {
     
     // Map numerical rows directly to coordinate grids
     const coords = points.map((p, index) => {
-      const x = (index / (points.length - 1)) * width;
+      const x = points.length > 1 ? (index / (points.length - 1)) * width : width / 2;
       // Invert Y axis because 0 is top in SVG plane
       const y = height - ((p / 100) * chartHeight) - 10;
       return { x, y };
@@ -87,7 +92,9 @@ export default function AnalyticsView() {
       linePath += ` Q ${cpX} ${coords[i - 1].y}, ${coords[i].x} ${coords[i].y}`;
     }
 
-    const areaPath = `${linePath} L ${width} ${height} L 0 ${height} Z`;
+    const areaPath = coords.length > 1 
+      ? `${linePath} L ${width} ${height} L 0 ${height} Z` 
+      : `${linePath} L ${coords[0].x} ${height} Z`;
     
     return {
       area: areaPath,
@@ -121,65 +128,73 @@ export default function AnalyticsView() {
             </div>
 
             {/* Custom SVG Area Curve Chart */}
-            <div className="relative w-full h-56 bg-surface-container-lowest/20 rounded-lg border border-outline-variant/30 flex items-end">
-              <svg className="w-full h-full absolute inset-0 overflow-visible" preserveAspectRatio="none" viewBox="0 0 400 120">
-                <defs>
-                  <linearGradient id="gradientPrimary" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#adc6ff" stopOpacity="0.3"/>
-                    <stop offset="100%" stopColor="#adc6ff" stopOpacity="0"/>
-                  </linearGradient>
-                </defs>
-                
-                {/* Grid Lines */}
-                <line x1="0" y1="30" x2="400" y2="30" stroke="rgba(66,71,84,0.15)" strokeWidth="1" />
-                <line x1="0" y1="60" x2="400" y2="60" stroke="rgba(66,71,84,0.15)" strokeWidth="1" />
-                <line x1="0" y1="90" x2="400" y2="90" stroke="rgba(66,71,84,0.15)" strokeWidth="1" />
+            <div className="relative w-full h-56 bg-surface-container-lowest/20 rounded-lg border border-outline-variant/30 flex items-end justify-center">
+              {events.length === 0 ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-on-surface-variant font-mono p-4 text-center">
+                  System telemetry pipeline empty — awaiting ingress core status
+                </div>
+              ) : (
+                <>
+                  <svg className="w-full h-full absolute inset-0 overflow-visible" preserveAspectRatio="none" viewBox="0 0 400 120">
+                    <defs>
+                      <linearGradient id="gradientPrimary" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#adc6ff" stopOpacity="0.3"/>
+                        <stop offset="100%" stopColor="#adc6ff" stopOpacity="0"/>
+                      </linearGradient>
+                    </defs>
+                    
+                    {/* Grid Lines */}
+                    <line x1="0" y1="30" x2="400" y2="30" stroke="rgba(66,71,84,0.15)" strokeWidth="1" />
+                    <line x1="0" y1="60" x2="400" y2="60" stroke="rgba(66,71,84,0.15)" strokeWidth="1" />
+                    <line x1="0" y1="90" x2="400" y2="90" stroke="rgba(66,71,84,0.15)" strokeWidth="1" />
 
-                {/* Dynamically Generated Area curve */}
-                <path 
-                  d={svgPaths.area} 
-                  fill="url(#gradientPrimary)"
-                />
-                
-                {/* Dynamically Generated Top line */}
-                <path 
-                  d={svgPaths.line} 
-                  fill="none" 
-                  stroke="#adc6ff" 
-                  strokeWidth="2.5"
-                  className="animate-pulse-slow"
-                />
+                    {/* Dynamically Generated Area curve */}
+                    <path 
+                      d={svgPaths.area} 
+                      fill="url(#gradientPrimary)"
+                    />
+                    
+                    {/* Dynamically Generated Top line */}
+                    <path 
+                      d={svgPaths.line} 
+                      fill="none" 
+                      stroke="#adc6ff" 
+                      strokeWidth="2.5"
+                      className="animate-pulse-slow"
+                    />
 
-                {/* Animated flowing dynamic line */}
-                <path 
-                  d={svgPaths.line} 
-                  fill="none" 
-                  stroke="#4edea3" 
-                  strokeWidth="1.5"
-                  strokeDasharray="8 6"
-                  className="animate-flow"
-                />
-                
-                {/* Dynamic Coordinate Point indicators */}
-                {svgPaths.dots.map((dot, index) => (
-                  <circle 
-                    key={index}
-                    cx={dot.x} 
-                    cy={dot.y} 
-                    r={index === svgPaths.dots.length - 1 ? "5" : "3.5"} 
-                    fill={index === svgPaths.dots.length - 1 ? "#4edea3" : "#adc6ff"} 
-                    stroke="#000" 
-                    strokeWidth="1.5" 
-                  />
-                ))}
-              </svg>
-              
-              {/* Bottom dynamic labels */}
-              <div className="absolute bottom-1 w-full px-4 flex justify-between font-mono text-[9px] text-on-surface-variant">
-                {timeLabels.map((lbl, idx) => (
-                  <span key={idx}>{lbl}</span>
-                ))}
-              </div>
+                    {/* Animated flowing dynamic line */}
+                    <path 
+                      d={svgPaths.line} 
+                      fill="none" 
+                      stroke="#4edea3" 
+                      strokeWidth="1.5"
+                      strokeDasharray="8 6"
+                      className="animate-flow"
+                    />
+                    
+                    {/* Dynamic Coordinate Point indicators */}
+                    {svgPaths.dots.map((dot, index) => (
+                      <circle 
+                        key={index}
+                        cx={dot.x} 
+                        cy={dot.y} 
+                        r={index === svgPaths.dots.length - 1 ? "5" : "3.5"} 
+                        fill={index === svgPaths.dots.length - 1 ? "#4edea3" : "#adc6ff"} 
+                        stroke="#000" 
+                        strokeWidth="1.5" 
+                      />
+                    ))}
+                  </svg>
+                  
+                  {/* Bottom dynamic labels */}
+                  <div className="absolute bottom-1 w-full px-4 flex justify-between font-mono text-[9px] text-on-surface-variant">
+                    {timeLabels.map((lbl, idx) => (
+                      <span key={idx}>{lbl}</span>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -266,25 +281,33 @@ export default function AnalyticsView() {
               </tr>
             </thead>
             <tbody className="text-sm">
-              {events.map((ev, i) => (
-                <tr key={i} className="border-b border-outline-variant/30 hover:bg-surface-container-high/15 transition-colors">
-                  <td className="p-4 font-mono text-xs text-on-surface-variant">{ev.timestamp}</td>
-                  <td className="p-4 font-semibold text-on-surface">{ev.eventType}</td>
-                  <td className="p-4 font-bold text-primary font-mono text-xs">{ev.framework}</td>
-                  <td className="p-4 font-mono text-xs text-on-surface-variant">{ev.artifactId}</td>
-                  <td className="p-4 text-right">
-                    <span className={`inline-block text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
-                      ev.status === 'Verified' || ev.status === 'Signed'
-                        ? 'bg-[#005236] text-[#4edea3]'
-                        : ev.status === 'Pending'
-                        ? 'bg-amber-500/20 text-amber-500'
-                        : 'bg-error/20 text-error'
-                    }`}>
-                      {ev.status.toUpperCase()}
-                    </span>
+              {events.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-xs text-on-surface-variant font-mono">
+                    System telemetry pipeline empty — awaiting ingress core status
                   </td>
                 </tr>
-              ))}
+              ) : (
+                events.map((ev, i) => (
+                  <tr key={i} className="border-b border-outline-variant/30 hover:bg-surface-container-high/15 transition-colors">
+                    <td className="p-4 font-mono text-xs text-on-surface-variant">{ev.timestamp}</td>
+                    <td className="p-4 font-semibold text-on-surface">{ev.eventType}</td>
+                    <td className="p-4 font-bold text-primary font-mono text-xs">{ev.framework}</td>
+                    <td className="p-4 font-mono text-xs text-on-surface-variant">{ev.artifactId}</td>
+                    <td className="p-4 text-right">
+                      <span className={`inline-block text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
+                        ev.status === 'Verified' || ev.status === 'Signed'
+                          ? 'bg-[#005236] text-[#4edea3]'
+                          : ev.status === 'Pending'
+                          ? 'bg-amber-500/20 text-amber-500'
+                          : 'bg-error/20 text-error'
+                      }`}>
+                        {ev.status.toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

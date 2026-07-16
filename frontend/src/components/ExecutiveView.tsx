@@ -23,17 +23,17 @@ export default function ExecutiveView() {
   const activeIncidents = incidents.filter(i => i.status !== 'Mitigated');
   const riskIndex = activeIncidents.length > 0 
     ? Math.max(...activeIncidents.map(i => i.severity === 'critical' ? 95 : 80)) 
-    : 12.4;
+    : 0.0;
 
-  const healthScore = parseFloat(Math.max(10, 100 - (activeIncidents.length * 24.2)).toFixed(1));
+  const healthScore = parseFloat(Math.max(0, 100 - (activeIncidents.length * 24.2)).toFixed(1));
 
   // 2. Synthesize dynamic business metrics from real database statistics
-  const totalMonitored = systemStatus?.sessions_monitored || 150;
+  const totalMonitored = systemStatus?.sessions_monitored || 0;
   const totalDeflections = systemStatus?.anomalies_deflected || 0;
   
   // Dynamic business impact derived from total deflections
-  const lossAvoidanceValue = totalDeflections * 15 + 45; 
-  const dynamicThroughput = (totalMonitored * 0.028 + 1.2).toFixed(1);
+  const lossAvoidanceValue = totalDeflections * 15; 
+  const dynamicThroughput = totalMonitored > 0 ? (totalMonitored * 0.028 + 1.2).toFixed(1) : "0.0";
 
   return (
     <div className="space-y-6">

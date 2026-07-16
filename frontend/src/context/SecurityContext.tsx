@@ -51,11 +51,7 @@ const SecurityContext = createContext<SecurityContextType | undefined>(undefined
 // Purged baseline arrays to enforce absolute reliance on active backend streams
 const INITIAL_INCIDENTS: Incident[] = [];
 const INITIAL_SESSIONS: PrivilegedSession[] = [];
-const INITIAL_ALGORITHMS: AlgorithmPerformance[] = [
-  { name: 'ML-KEM-1024', latency: 152, level: 'Level 5 (FIPS 203)', size: '1.5 KB', status: 'ACTIVE' },
-  { name: 'ML-DSA-85', latency: 254, level: 'Level 5 (FIPS 204)', size: '2.6 KB', status: 'ACTIVE' },
-  { name: 'AES-256-GCM', latency: 8, level: 'Symmetric Shield', size: '256 bits', status: 'OPTIMIZED' }
-];
+const INITIAL_ALGORITHMS: AlgorithmPerformance[] = [];
 
 export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
@@ -66,10 +62,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const [signals, setSignals] = useState<any[]>([]);
 
-  const [generationLogs, setGenerationLogs] = useState<string[]>([
-    'System status: Stable. Ready for quantum safe encryption audit.',
-    'Click "Generate Safe PQC Key" above to deploy cryptographic lattice layers.'
-  ]);
+  const [generationLogs, setGenerationLogs] = useState<string[]>([]);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [currentOperator] = useState<string>('SOC_Operator_04');
@@ -101,7 +94,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [dualControlCallback]);
   
   const [complianceScanning, setComplianceScanning] = useState(false);
-  const [auditScore, setAuditScore] = useState(94.2);
+  const [auditScore, setAuditScore] = useState(0.0);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
   const fetchSystemStatus = useCallback(async () => {

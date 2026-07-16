@@ -187,33 +187,39 @@ export default function QuantumView() {
             </p>
 
             <div className="space-y-3.5">
-              {algorithms.map((algo: AlgorithmPerformance) => {
-                // Inline name cleanup translating draft strings dynamically to true FIPS values
-                const clearName = algo.name.replace('ML-KEM-768', 'ML-KEM-1024').replace('ML-DSA-65', 'ML-DSA-85');
-                
-                return (
-                  <div key={algo.name} className="flex justify-between items-center text-xs">
-                    <div>
-                      <span className="font-mono font-semibold text-on-surface block">{clearName}</span>
-                      <span className="text-[10px] text-on-surface-variant">{algo.level} • {algo.size}</span>
+              {algorithms.length === 0 ? (
+                <div className="p-4 rounded-lg bg-surface-container-lowest/60 border border-outline-variant/40 text-center text-xs text-on-surface-variant font-mono leading-relaxed">
+                  No active quantum cryptographic benchmarks initialized. Fire up the local FastAPI service to inject FIPS 203/204 lattice telemetry.
+                </div>
+              ) : (
+                algorithms.map((algo: AlgorithmPerformance) => {
+                  // Inline name cleanup translating draft strings dynamically to true FIPS values
+                  const clearName = algo.name.replace('ML-KEM-768', 'ML-KEM-1024').replace('ML-DSA-65', 'ML-DSA-85');
+                  
+                  return (
+                    <div key={algo.name} className="flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-mono font-semibold text-on-surface block">{clearName}</span>
+                        <span className="text-[10px] text-on-surface-variant">{algo.level} • {algo.size}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono text-primary font-bold block">
+                          {algo.latency > 1000 ? `${(algo.latency / 1000).toFixed(1)}s` : `${algo.latency}ms`}
+                        </span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                          algo.status === 'OPTIMIZED' 
+                            ? 'bg-[#005236] text-[#4edea3]' 
+                            : algo.status === 'ACTIVE' 
+                            ? 'bg-primary/20 text-primary' 
+                            : 'bg-error/20 text-error'
+                        }`}>
+                          {algo.status}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="font-mono text-primary font-bold block">
-                        {algo.latency > 1000 ? `${(algo.latency / 1000).toFixed(1)}s` : `${algo.latency}ms`}
-                      </span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                        algo.status === 'OPTIMIZED' 
-                          ? 'bg-[#005236] text-[#4edea3]' 
-                          : algo.status === 'ACTIVE' 
-                          ? 'bg-primary/20 text-primary' 
-                          : 'bg-error/20 text-error'
-                      }`}>
-                        {algo.status}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
