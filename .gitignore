@@ -1,0 +1,123 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Frontend build outputs
+dist/
+build/
+*.local
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+
+# Vite specific
+.vite/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.suo
+*.user
+*.userosscache
+*.cache
+*.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files (except .env.example)
+.env
+.env.*
+!.env.example
+
+# Coverage and test files
+coverage/
+*.cover
+*.py,cover
+.tox/
+nosetests.xml
+coverage.xml
+*.lcov
+.htmlcov/
+
+# Jupyter notebook
+.ipynb_checkpoints
+
+# IDE specific
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# MacOS
+*.app
+*.dmg
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Backend specific
+instance/
+*.pot
+*.mo
+*.pyc
+
+# Frontend specific
+*.tsbuildinfo

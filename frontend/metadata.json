@@ -1,0 +1,6 @@
+{
+  "name": "Obsidian XDR",
+  "description": "An advanced, high-stakes security operations and threat intelligence dashboard featuring real-time attack monitoring, vulnerability scanning, and automated incident response.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
