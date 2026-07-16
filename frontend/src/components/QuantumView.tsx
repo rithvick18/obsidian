@@ -11,9 +11,10 @@ import {
   Shield,
   HelpCircle
 } from 'lucide-react';
-import { ALGORITHM_PERFORMANCE } from '../mockData';
+import { AlgorithmPerformance } from '../types';
 
 export default function QuantumView() {
+  const [algorithms, setAlgorithms] = useState<AlgorithmPerformance[]>([]);
   const [selectedAlgo, setSelectedAlgo] = useState('ML-KEM-768');
   const [entropyLevel, setEntropyLevel] = useState(92.4);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -212,7 +213,7 @@ export default function QuantumView() {
             </p>
 
             <div className="space-y-3.5">
-              {ALGORITHM_PERFORMANCE.map(algo => (
+              {algorithms.map((algo: AlgorithmPerformance) => (
                 <div key={algo.name} className="flex justify-between items-center text-xs">
                   <div>
                     <span className="font-mono font-semibold text-on-surface block">{algo.name}</span>

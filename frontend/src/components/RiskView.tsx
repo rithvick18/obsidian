@@ -12,11 +12,39 @@ import {
   CheckCircle,
   HelpCircle
 } from 'lucide-react';
-import { RISK_PROFILES, RiskProfile } from '../mockData';
+import { RiskProfile } from '../types';
+
+const defaultProfile: RiskProfile = {
+  name: 'No Profile Loaded',
+  role: 'Select Profile',
+  employeeId: '#N/A',
+  office: 'Unknown Hub',
+  image: '',
+  trustScore: 100,
+  anomalySummary: 'No risk profile data currently loaded.',
+  heatmap: [
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+  ],
+  radar: {
+    loginRisk: 0,
+    accessPattern: 0,
+    deviceTrust: 0,
+    behaviorScore: 0,
+    networkSecurity: 0,
+    appIntegrity: 0,
+  },
+  telemetry: []
+};
 
 export default function RiskView() {
+  const [profiles, setProfiles] = useState<RiskProfile[]>([]);
   const [selectedProfileIndex, setSelectedProfileIndex] = useState(0);
-  const profile = RISK_PROFILES[selectedProfileIndex];
+  const profile: RiskProfile = profiles[selectedProfileIndex] || defaultProfile;
 
   // Helper to generate the pentagram radar coordinates based on profile score
   const calculateRadarPath = (r: typeof profile.radar) => {
@@ -76,7 +104,7 @@ export default function RiskView() {
       
       {/* Switch Profiles header row */}
       <div className="flex gap-4 border-b border-outline-variant pb-4 overflow-x-auto">
-        {RISK_PROFILES.map((prof, index) => {
+        {profiles.map((prof: RiskProfile, index: number) => {
           const isSelected = index === selectedProfileIndex;
           return (
             <button
@@ -214,7 +242,7 @@ export default function RiskView() {
                 <div key={day} className="flex items-center gap-3">
                   <span className="w-9 text-xs text-on-surface-variant font-mono font-semibold">{day}</span>
                   <div className="flex-1 flex gap-1.5">
-                    {(profile.heatmap[dIdx] || [0, 0, 0, 0, 0]).map((val, hIdx) => {
+                    {((profile.heatmap && profile.heatmap[dIdx]) || [0, 0, 0, 0, 0]).map((val: number, hIdx: number) => {
                       let bgClass = 'bg-bg-node';
                       if (val > 0 && val <= 1) bgClass = 'bg-primary/20';
                       else if (val > 1 && val <= 3) bgClass = 'bg-primary/50';
@@ -269,7 +297,7 @@ export default function RiskView() {
               </tr>
             </thead>
             <tbody className="text-sm font-sans">
-              {profile.telemetry.map((tel, idx) => (
+              {(profile.telemetry || []).map((tel: RiskProfile['telemetry'][number], idx: number) => (
                 <tr key={idx} className="border-b border-outline-variant/30 hover:bg-surface-container-high/15 transition-colors">
                   <td className="p-4 font-mono text-xs text-on-surface-variant">{tel.timestamp}</td>
                   <td className="p-4 font-bold text-on-surface">{tel.eventType}</td>

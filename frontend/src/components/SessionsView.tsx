@@ -14,12 +14,11 @@ import {
   HelpCircle,
   Play
 } from 'lucide-react';
-import { INITIAL_SESSIONS } from '../mockData';
 import { PrivilegedSession } from '../types';
 
 export default function SessionsView() {
-  const [sessions, setSessions] = useState<PrivilegedSession[]>(INITIAL_SESSIONS);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(INITIAL_SESSIONS[0].id);
+  const [sessions, setSessions] = useState<PrivilegedSession[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
 
   const selectedSession = sessions.find(sess => sess.id === selectedSessionId) || sessions[0];
 

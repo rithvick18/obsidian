@@ -61,3 +61,38 @@ export interface RiskFactor {
   name: string;
   value: number;
 }
+
+export interface RiskProfile {
+  name: string;
+  role: string;
+  employeeId: string;
+  office: string;
+  image: string;
+  trustScore: number;
+  anomalySummary: string;
+  heatmap: number[][];
+  radar: {
+    loginRisk: number;
+    accessPattern: number;
+    deviceTrust: number;
+    behaviorScore: number;
+    networkSecurity: number;
+    appIntegrity: number;
+  };
+  telemetry: {
+    timestamp: string;
+    eventType: string;
+    path: string;
+    sourceIp: string;
+    riskDelta: string;
+    severity: 'error' | 'warning' | 'success';
+  }[];
+}
+
+export interface AlgorithmPerformance {
+  name: string;
+  latency: number;
+  level: string;
+  size: string;
+  status: string;
+}

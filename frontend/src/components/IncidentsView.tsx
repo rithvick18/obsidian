@@ -17,26 +17,27 @@ import {
   Sliders,
   Filter
 } from 'lucide-react';
-import { INITIAL_INCIDENTS } from '../mockData';
 import { Incident } from '../types';
 
 export default function IncidentsView() {
-  const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS);
-  const [selectedIncidentId, setSelectedIncidentId] = useState<string>(INITIAL_INCIDENTS[0].id);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [isolationRunning, setIsolationRunning] = useState<string | null>(null);
 
   const selectedIncident = incidents.find(inc => inc.id === selectedIncidentId) || incidents[0];
 
   const handleIsolateHost = (entityName: string) => {
+    if (!selectedIncident) return;
+
     setIsolationRunning(entityName);
-    
+
     setTimeout(() => {
       // Update incident status to mitigated or isolated, and add a log to its timeline
-      setIncidents(prevIncidents => 
-        prevIncidents.map(inc => {
+      setIncidents((prevIncidents: Incident[]) =>
+        prevIncidents.map((inc: Incident) => {
           if (inc.id === selectedIncident.id) {
             // Check if the timeline already has this containment action
-            const isAlreadyContained = inc.timeline.some(t => t.title === 'Manual Action: Host Isolated');
+            const isAlreadyContained = inc.timeline.some((t: any) => t.title === 'Manual Action: Host Isolated');
             if (isAlreadyContained) return inc;
 
             const updatedTimeline = [
@@ -64,8 +65,10 @@ export default function IncidentsView() {
   };
 
   const handleMitigateDirect = () => {
-    setIncidents(prevIncidents => 
-      prevIncidents.map(inc => {
+    if (!selectedIncident) return;
+
+    setIncidents((prevIncidents: Incident[]) =>
+      prevIncidents.map((inc: Incident) => {
         if (inc.id === selectedIncident.id) {
           return {
             ...inc,
@@ -157,29 +160,29 @@ export default function IncidentsView() {
       {/* Right Column: Deep Incident Details & Sandbox Actions (span 7) */}
       <div className="col-span-12 xl:col-span-7 flex flex-col gap-6">
         <div className="glass-panel rounded-xl p-6 relative overflow-hidden flex-1">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4 border-b border-outline-variant/50 pb-5 mb-5">
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <span className="font-mono text-sm text-primary font-bold">{selectedIncident.id}</span>
-                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
-                  selectedIncident.severity === 'critical' 
-                    ? 'bg-error-container/20 text-error border border-error/20' 
-                    : 'bg-amber-500/20 text-amber-500 border border-amber-500/20'
-                }`}>
-                  {selectedIncident.severity.toUpperCase()}
-                </span>
-              </div>
-              <h2 className="font-headline-sm text-lg sm:text-xl font-bold text-on-surface leading-snug">{selectedIncident.title}</h2>
-              <p className="text-xs text-on-surface-variant font-sans mt-1">Impacted Target Object: <span className="font-mono font-bold text-on-surface">{selectedIncident.impactedEntity}</span></p>
-            </div>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4 border-b border-outline-variant/50 pb-5 mb-5">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="font-mono text-sm text-primary font-bold">{selectedIncident?.id}</span>
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
+              selectedIncident?.severity === 'critical'
+                ? 'bg-error-container/20 text-error border border-error/20'
+                : 'bg-amber-500/20 text-amber-500 border border-amber-500/20'
+            }`}>
+              {selectedIncident?.severity?.toUpperCase()}
+            </span>
+          </div>
+          <h2 className="font-headline-sm text-lg sm:text-xl font-bold text-on-surface leading-snug">{selectedIncident?.title}</h2>
+          <p className="text-xs text-on-surface-variant font-sans mt-1">Impacted Target Object: <span className="font-mono font-bold text-on-surface">{selectedIncident?.impactedEntity}</span></p>
+        </div>
             
             {/* Action Group */}
             <div className="flex flex-wrap gap-2.5 sm:self-center">
-              <button 
-                onClick={() => handleIsolateHost(selectedIncident.impactedEntity)}
-                disabled={isolationRunning !== null || selectedIncident.status === 'Mitigated'}
+              <button
+                onClick={() => handleIsolateHost(selectedIncident?.impactedEntity || '')}
+                disabled={isolationRunning !== null || selectedIncident?.status === 'Mitigated'}
                 className={`py-2 px-3.5 rounded text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  selectedIncident.status === 'Mitigated'
+                  selectedIncident?.status === 'Mitigated'
                     ? 'bg-outline-variant text-on-surface-variant cursor-not-allowed'
                     : 'bg-error hover:bg-error/80 text-white'
                 }`}
@@ -196,8 +199,8 @@ export default function IncidentsView() {
                   </>
                 )}
               </button>
-              {selectedIncident.status !== 'Mitigated' && (
-                <button 
+              {selectedIncident?.status !== 'Mitigated' && (
+                <button
                   onClick={handleMitigateDirect}
                   className="py-2 px-3.5 bg-secondary hover:bg-secondary/80 text-white rounded text-xs font-mono uppercase tracking-wider font-bold transition-all cursor-pointer"
                 >
@@ -213,21 +216,21 @@ export default function IncidentsView() {
             <div className="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60 flex items-center justify-between overflow-x-auto gap-4">
               <div className="flex-1 min-w-[110px] text-center p-2.5 rounded bg-bg-node border border-outline-variant">
                 <div className="text-[9px] text-on-surface-variant uppercase font-bold tracking-wider">Node 1</div>
-                <div className="text-xs text-primary font-bold font-mono mt-1">{selectedIncident.attackChain.node1}</div>
+                <div className="text-xs text-primary font-bold font-mono mt-1">{selectedIncident?.attackChain?.node1}</div>
               </div>
               <div className="w-6 h-0.5 bg-outline-variant relative">
                 <span className="absolute -top-1 right-0 w-2 h-2 rounded-full bg-primary"></span>
               </div>
               <div className="flex-1 min-w-[110px] text-center p-2.5 rounded bg-bg-node border border-outline-variant">
                 <div className="text-[9px] text-on-surface-variant uppercase font-bold tracking-wider">Node 2</div>
-                <div className="text-xs text-secondary font-bold font-mono mt-1">{selectedIncident.attackChain.node2}</div>
+                <div className="text-xs text-secondary font-bold font-mono mt-1">{selectedIncident?.attackChain?.node2}</div>
               </div>
               <div className="w-6 h-0.5 bg-outline-variant relative">
                 <span className="absolute -top-1 right-0 w-2 h-2 rounded-full bg-secondary"></span>
               </div>
               <div className="flex-1 min-w-[110px] text-center p-2.5 rounded bg-bg-node border border-error">
                 <div className="text-[9px] text-error uppercase font-bold tracking-wider">Node 3</div>
-                <div className="text-xs text-error font-bold font-mono mt-1">{selectedIncident.attackChain.node3}</div>
+                <div className="text-xs text-error font-bold font-mono mt-1">{selectedIncident?.attackChain?.node3}</div>
               </div>
             </div>
           </div>
@@ -236,7 +239,7 @@ export default function IncidentsView() {
           <div>
             <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">Threat Timeline Logs</h3>
             <div className="relative border-l-2 border-outline-variant/50 pl-6 ml-3 space-y-5 max-h-[300px] overflow-y-auto">
-              {selectedIncident.timeline.map((item, index) => (
+              {selectedIncident?.timeline?.map((item: any, index: number) => (
                 <div key={index} className="relative">
                   {/* Dot */}
                   <span className={`absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full border-2 ${

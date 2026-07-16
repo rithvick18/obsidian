@@ -14,11 +14,10 @@ import {
   Clock,
   HelpCircle
 } from 'lucide-react';
-import { COMPLIANCE_EVENTS } from '../mockData';
 import { AuditEvent } from '../types';
 
 export default function AnalyticsView() {
-  const [events, setEvents] = useState<AuditEvent[]>(COMPLIANCE_EVENTS);
+  const [events, setEvents] = useState<AuditEvent[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [auditScore, setAuditScore] = useState(94.2);
 
