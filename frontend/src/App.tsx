@@ -200,6 +200,25 @@ function Dashboard() {
 
       {/* Main Container Stage */}
       <main className="flex-1 flex flex-col min-w-0 min-h-screen relative">
+        <AnimatePresence>
+          {!isConnected && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="bg-error/15 border-b border-error/30 backdrop-blur-md px-6 py-3 flex items-center gap-3 overflow-hidden text-xs font-mono text-error w-full relative z-20"
+            >
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-error"></span>
+              </span>
+              <span className="flex-1 leading-normal">
+                [CONNECTION_FAILURE]: Obsidian Sentinel Core loopback connection severed. Telemetry pipeline offline. Verify local FastAPI Uvicorn engine status on port 8000.
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <header className="p-6 border-b border-outline-variant/40 bg-surface-container-lowest/10 flex justify-between items-center z-10">
           <div>
             <div className="text-[10px] text-on-surface-variant uppercase tracking-widest font-mono">OBSIDIAN SENTINEL CORE</div>

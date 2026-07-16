@@ -47,7 +47,12 @@ export default function ExecutiveView() {
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-xs">Risk Index</p>
-              <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">{riskIndex}</h2>
+              <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">
+                <span>{riskIndex}</span>
+                {!systemStatus && (
+                  <span className="text-xs tracking-normal font-mono text-error/80 ml-2 block sm:inline">[DISCONNECTED]</span>
+                )}
+              </h2>
             </div>
             <span className={`font-label-md px-2.5 py-1 rounded text-xs font-semibold ${
               activeIncidents.length > 0 ? 'text-error bg-error/10' : 'text-secondary bg-[#005236]'
@@ -68,7 +73,12 @@ export default function ExecutiveView() {
           </div>
           <div>
             <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-xs">Quantum Readiness</p>
-            <h2 className="font-display-lg text-4xl font-bold mt-1 text-primary">{systemStatus ? "88%" : "0%"}</h2>
+            <h2 className="font-display-lg text-4xl font-bold mt-1 text-primary">
+              <span>{systemStatus ? "88%" : "0%"}</span>
+              {!systemStatus && (
+                <span className="text-xs tracking-normal font-mono text-error/80 ml-2 block sm:inline">[DISCONNECTED]</span>
+              )}
+            </h2>
           </div>
           <div className="flex gap-1.5 mt-4">
             <div className="flex-1 h-8 bg-primary/20 border-t-2 border-primary/50 rounded-sm"></div>
@@ -86,7 +96,12 @@ export default function ExecutiveView() {
           </div>
           <div>
             <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-xs">Mean Response Time</p>
-            <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">{systemStatus ? "1.8m" : "0.0m"}</h2>
+            <h2 className="font-display-lg text-4xl font-bold mt-1 text-on-surface">
+              <span>{systemStatus ? "1.8m" : "0.0m"}</span>
+              {!systemStatus && (
+                <span className="text-xs tracking-normal font-mono text-error/80 ml-2 block sm:inline">[DISCONNECTED]</span>
+              )}
+            </h2>
           </div>
           <div className="mt-4 flex items-end gap-1.5 h-10">
             <div className="w-3 h-1/2 bg-outline-variant rounded-t-sm"></div>
