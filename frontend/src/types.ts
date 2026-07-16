@@ -65,6 +65,7 @@ export interface AuditEvent {
   artifactId: string;
   status: 'Verified' | 'Critical' | 'Pending' | 'Signed';
   icon: string;
+  risk_score?: number;
 }
 
 export interface RiskFactor {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldAlert, UserCheck, Lock, Key, AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { useSecurity } from '../context/SecurityContext';
 
 interface DualControlModalProps {
   isOpen: boolean;
@@ -10,9 +11,10 @@ interface DualControlModalProps {
   targetEntity: string;
 }
 
+// Clean identifiers ensuring exact parameter consistency with SQLite backend blocks
 const APPROVERS = [
   {
-    id: 'Approver: t.daniels.sec_lead',
+    id: 't.daniels.sec_lead',
     name: 'T. Daniels',
     role: 'Principal Security Lead',
     department: 'SOC Architecture',
@@ -20,7 +22,7 @@ const APPROVERS = [
     avatar: 'TD',
   },
   {
-    id: 'Approver: m.chen.ciso',
+    id: 'm.chen.ciso',
     name: 'M. Chen',
     role: 'Chief Information Security Officer',
     department: 'Executive Leadership',
@@ -28,7 +30,7 @@ const APPROVERS = [
     avatar: 'MC',
   },
   {
-    id: 'Approver: r.vance.vp_sec',
+    id: 'r.vance.vp_sec',
     name: 'R. Vance',
     role: 'VP of Infrastructure Security',
     department: 'Core Networks',
@@ -44,8 +46,12 @@ export default function DualControlModal({
   actionType,
   targetEntity,
 }: DualControlModalProps) {
+  // Drive the current active primary session identity dynamically from the security context
+  const { currentOperator } = useSecurity();
+  
   const [selectedApprover, setSelectedApprover] = useState<string>(APPROVERS[0].id);
   const [isSigning, setIsSigning] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -79,6 +85,14 @@ export default function DualControlModal({
   };
 
   const handleConfirm = () => {
+    setValidationError(null);
+    
+    // Front-end interception guarding against self-approval boundary bypass attacks
+    if (currentOperator.trim() === selectedApprover.trim()) {
+      setValidationError("Separation of Duties Violation: You cannot act as the secondary approver for an action you initiated.");
+      return;
+    }
+
     setIsSigning(true);
     setTimeout(() => {
       setIsSigning(false);
@@ -135,7 +149,7 @@ export default function DualControlModal({
               <p className="text-xs opacity-90 mt-1 leading-relaxed">{info.desc}</p>
             </div>
 
-            {/* Primary Operator Display */}
+            {/* Dynamic Primary Operator Display */}
             <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface-container-lowest/60 border border-outline-variant/60">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-bold text-xs text-primary">
@@ -146,7 +160,7 @@ export default function DualControlModal({
                     Primary Initiating Operator
                   </div>
                   <div className="text-xs font-bold text-on-surface font-mono">
-                    SOC_Operator_04 (Tier-3 Analyst)
+                    {currentOperator} (Tier-3 Analyst)
                   </div>
                 </div>
               </div>
@@ -161,13 +175,24 @@ export default function DualControlModal({
                 <UserCheck size={14} className="text-secondary" />
                 Select Secondary Security Approver (Required Sign-Off):
               </label>
+              
+              {validationError && (
+                <div className="mb-3 p-3 rounded-lg bg-error/15 border border-error/30 text-error text-xs flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  <span>{validationError}</span>
+                </div>
+              )}
+
               <div className="space-y-2.5">
                 {APPROVERS.map((appr) => {
                   const isSelected = selectedApprover === appr.id;
                   return (
                     <div
                       key={appr.id}
-                      onClick={() => setSelectedApprover(appr.id)}
+                      onClick={() => {
+                        setValidationError(null);
+                        setSelectedApprover(appr.id);
+                      }}
                       className={`p-3.5 rounded-xl border cursor-pointer flex items-center justify-between transition-all ${
                         isSelected
                           ? 'bg-secondary/15 border-secondary text-on-surface shadow-md'

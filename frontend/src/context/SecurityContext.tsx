@@ -40,6 +40,7 @@ interface SecurityContextType {
   openDualControlModal: (actionType: string, targetEntity: string, callback: (approver: string) => void) => void;
   closeDualControlModal: () => void;
   confirmDualControlAction: (approver: string) => void;
+  currentOperator: string;
 }
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
@@ -304,6 +305,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ]);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [currentOperator] = useState<string>('SOC_Operator_04');
 
   // Dual-Control Modal state
   const [dualControlModalOpen, setDualControlModalOpen] = useState(false);
@@ -341,7 +343,44 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       framework: 'FIPS-140-3',
       artifactId: 'BOOT-SIG-042',
       status: 'Signed',
-      icon: 'shield'
+      icon: 'shield',
+      risk_score: 15
+    },
+    {
+      timestamp: '11:15',
+      eventType: 'Database Access Policy Alignment',
+      framework: 'SOC2-CC3',
+      artifactId: 'POL-ALN-109',
+      status: 'Verified',
+      icon: 'check_circle',
+      risk_score: 22
+    },
+    {
+      timestamp: '11:30',
+      eventType: 'Privileged Access Revocation Event',
+      framework: 'GDPR-Ch4',
+      artifactId: 'REV-ACT-089',
+      status: 'Critical',
+      icon: 'alert_octagon',
+      risk_score: 85
+    },
+    {
+      timestamp: '11:45',
+      eventType: 'Automatic HSM Key Rotation',
+      framework: 'NIST-800-53',
+      artifactId: 'ROT-KEY-002',
+      status: 'Signed',
+      icon: 'refresh_ccw',
+      risk_score: 18
+    },
+    {
+      timestamp: '12:00',
+      eventType: 'Compliance Telemetry Scan Verification',
+      framework: 'NIST-CSF-v2',
+      artifactId: 'SCN-RES-412',
+      status: 'Verified',
+      icon: 'check_circle',
+      risk_score: 29
     }
   ]);
 
@@ -697,7 +736,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         body: JSON.stringify({
           user_id: userId,
           action_type: actionType,
-          primary_operator: 'SOC_Operator_04',
+          primary_operator: currentOperator,
           secondary_approver: secondaryApprover
         })
       });
@@ -742,7 +781,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ...inc,
             status: 'Mitigated',
             timeline: updatedTimeline,
-            primaryOperator: 'SOC_Operator_04',
+            primaryOperator: currentOperator,
             secondaryApprover: secondaryApprover
           };
         }
@@ -827,7 +866,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         framework: 'NIST-CSF-v2',
         artifactId: `SCN-RES-${Math.floor(Math.random() * 900) + 100}`,
         status: 'Verified',
-        icon: 'check_circle'
+        icon: 'check_circle',
+        risk_score: Math.floor(Math.random() * 45) + 15
       };
       setAuditEvents((prev) => [newEvent, ...prev]);
       setAuditScore((prev) => Math.min(100.0, parseFloat((prev + 0.6).toFixed(1))));
@@ -908,7 +948,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         dualControlTargetEntity,
         openDualControlModal,
         closeDualControlModal,
-        confirmDualControlAction
+        confirmDualControlAction,
+        currentOperator
       }}
     >
       {children}

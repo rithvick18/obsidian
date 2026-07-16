@@ -53,7 +53,8 @@ function Dashboard() {
     dualControlActionType,
     dualControlTargetEntity,
     closeDualControlModal,
-    confirmDualControlAction
+    confirmDualControlAction,
+    currentOperator
   } = useSecurity();
 
   // Listen to incidents in context to generate live notifications
@@ -211,7 +212,7 @@ function Dashboard() {
               OP
             </div>
             <div>
-              <p className="text-xs font-bold text-on-surface font-sans">SOC_Operator_04</p>
+              <p className="text-xs font-bold text-on-surface font-sans">{currentOperator}</p>
               <p className="text-[10px] text-on-surface-variant font-mono uppercase font-semibold">Tier-3 Analyst</p>
             </div>
           </div>

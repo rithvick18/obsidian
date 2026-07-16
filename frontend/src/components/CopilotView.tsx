@@ -28,88 +28,25 @@ export default function CopilotView() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       sender: 'assistant',
-      text: "Welcome to **Obsidian Copilot**. I am synchronized with your active XDR telemetry and ready to assist with live triage, automated containment, or cryptographic risk modeling.\n\nHow can I help you secure your enterprise environment today?",
-      timestamp: '09:00'
+      text: "Welcome to **Obsidian Copilot**. I am synchronized with your active XDR telemetry database and ready to assist with live triage, automated containment, or cryptographic risk modeling.\n\nHow can I help you secure your enterprise environment today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Synced cleanly with the anonymized role nodes in your SQLite fabric
   const SUGGESTIONS = [
-    'Explain lateral movement in INC-8429',
-    'List vulnerable subnets',
+    'Analyze anomalies for contractor_node_02',
+    'List critical database telemetry logs',
     'Provide post-quantum migration advice',
-    'Verify trust score for Arjun Vardhan'
+    'Verify active honeypot status keys'
   ];
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
-
-  const generateAnswer = (query: string): string => {
-    const q = query.toLowerCase();
-    
-    if (q.includes('inc-8429') || q.includes('lateral')) {
-      return `### Threat Analysis: INC-8429 (Unauthorized Database Bulk Export)
-
-**Attack Path Overview:**
-The attacker compromised the credential set for **j.smith@obsidian.io** from a Ukrainian IP. They achieved **UAC Bypass (T1068)** to elevate privileges and executed direct mass query exports targeting \`SV-PROD-DB-02\`.
-
-**Recommended Mitigation Playbook:**
-1. **Isolate the workstation:** Apply the virtual quarantine sandbox rules to sever outbound routes. *(Click "Isolate Impacted Host" in the Incidents dashboard)*.
-2. **Revoke Active SAML Sessions:** Invalidate Smith's SAML tokens to block subsequent database access attempts.
-3. **Trigger Password Vault Rotation:** Force immediate rotation of administrative database connection strings.`;
-    }
-    
-    if (q.includes('quantum') || q.includes('pqc') || q.includes('lattice')) {
-      return `### Post-Quantum Cryptographic Migration Guide
-
-We are currently transitioning local subnets from legacy asymmetric algorithms (RSA-4096) to NIST-approved **FIPS 203 Lattice Cryptography** standards.
-
-**Current Readiness Standing:**
-- **ML-KEM-768 Deployment:** **88% Active**. Remaining subnets include legacy logistics offices in APAC.
-- **Latency Impact:** ML-KEM-768 latency is highly optimized (~152.4ms overhead), whereas RSA-4096 exhibits extreme latency (~14.2s) under quantum emulation testing.
-
-*Recommendation:* Proceed to the **Quantum Center** to trigger corporate lattice seed keys for the remainder of legacy APAC routers.`;
-    }
-
-    if (q.includes('arjun') || q.includes('trust') || q.includes('risk')) {
-      return `### User Risk Triage: Arjun Vardhan
-
-**Identity Security Audit:**
-- **Current Trust Score:** **28/100 (HIGH RISK)**
-- **Critical Trigger Event:** "Impossible Travel" detected between Chennai, IN and Frankfurt, DE within a 45-minute window.
-- **Access Anomaly:** Attempted to access financial buckets S3://prod-fin-records/* from the unrecognized Frankfurt IP.
-
-**Mitigation Protocol:**
-- Proactively place user on temporary SAML quarantine.
-- Verify whether user initiated an authorized VPN tunnel.`;
-    }
-
-    if (q.includes('vulnerab') || q.includes('subnet') || q.includes('port')) {
-      return `### Corporate Subnet Vulnerability Matrix
-
-Active scanning of internal subnets reveals **2 Critical** and **14 Moderate** vulnerabilities:
-
-1. **Subnet EMEA-PROD-DB:** Exposed to unpatched CVE-2026-9021 (Remote Code Execution, named "Frostbyte").
-2. **Subnet MKT-WS:** High incidence of endpoint systems running UAC bypass configurations.
-
-*Remediation action:* Trigger an automated patch schedule via the **Security Analytics** scanning board to apply the security patch instantly.`;
-    }
-
-    return `### Obsidian Security Copilot Response
-
-I have analyzed your request: *"${query}"*. 
-
-As an AI-powered security architect, I can assist you with:
-- **Incident Investigation:** Triage of active threat alerts like INC-8429 or INC-8395.
-- **Quantum Cryptography:** Guidance on lattice-based keys, ML-KEM or ML-DSA protocols.
-- **Risk Remediation:** Analyzing employee anomalies, impossible travel, or credential risk.
-- **Remediation Execution:** Generating sandboxing commands for infected target hosts.
-
-Please select one of the suggested query chips below or provide a more specific security telemetry question.`;
-  };
 
   const handleSendMessage = async (textToSend: string) => {
     if (!textToSend.trim()) return;
@@ -124,6 +61,7 @@ Please select one of the suggested query chips below or provide a more specific 
     setInputText('');
     setIsTyping(true);
 
+    // Queries your backend, which handles Gemini API tunneling OR the live SQLite fallback analysis dynamically!
     const fullResponse = await sendCopilotMessage(textToSend);
 
     setIsTyping(false);
@@ -194,7 +132,6 @@ Please select one of the suggested query chips below or provide a more specific 
                 isAssistant ? 'self-start' : 'self-end flex-row-reverse ml-auto'
               }`}
             >
-              {/* Avatar circle */}
               <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${
                 isAssistant 
                   ? 'bg-primary/10 border-primary/30 text-primary' 
@@ -203,14 +140,13 @@ Please select one of the suggested query chips below or provide a more specific 
                 {isAssistant ? <Bot size={16} /> : <User size={16} />}
               </div>
 
-              {/* Chat bubble body */}
               <div className={`p-4 rounded-xl text-sm leading-relaxed ${
                 isAssistant 
                   ? 'bg-surface-container-low/80 text-on-surface border border-outline-variant/50' 
                   : 'bg-primary text-on-primary font-medium'
               }`}>
                 
-                {/* Parse Markdown-like titles manually or render text safely */}
+                {/* Parse Markdown structural response keys cleanly */}
                 <div className="whitespace-pre-wrap font-sans space-y-2">
                   {msg.text.split('\n\n').map((para, pIdx) => {
                     if (para.startsWith('### ')) {
