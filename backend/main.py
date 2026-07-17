@@ -791,7 +791,8 @@ async def automated_telemetry_simulator():
     frameworks = ["NIST-800-53", "FIPS-140-3", "SOC2-CC3", "GDPR-Ch4"]
 
     while True:
-        await asyncio.sleep(4)
+        # Dynamically evaluate operational velocity interval changes on the fly
+        await asyncio.sleep(sim_tuning.interval_seconds)
         
         # Only cycle generation loops if frontend displays are listening
         if not app.state.active_connections:
@@ -800,7 +801,25 @@ async def automated_telemetry_simulator():
         user = random.choice(users)
         action = random.choice(actions)
         framework = random.choice(frameworks)
-        risk_score = random.randint(10, 100)
+        
+        # Intercept and consume manual control deck injection parameters
+        if sim_tuning.force_next_type:
+            target_profile = sim_tuning.force_next_type
+            sim_tuning.force_next_type = None  # Consume and reset injection channel state instantly
+        else:
+            target_profile = "RANDOM"
+
+        # Apply deterministic risk distribution scores based on state metrics
+        if target_profile == "HONEYPOT":
+            risk_score = 100
+        elif target_profile == "THREAT":
+            risk_score = random.randint(86, 99)
+        elif target_profile == "MEDIUM":
+            risk_score = random.randint(51, 85)
+        elif target_profile == "NOMINAL":
+            risk_score = random.randint(10, 50)
+        else:
+            risk_score = random.randint(10, 100)
         
         # Build unified JSON payload
         simulated_event = {
@@ -950,6 +969,45 @@ async def startup_event():
     app.state.active_connections = []
     # Trigger the simulation engine pipeline thread explicitly inside the async event pool
     asyncio.create_task(automated_telemetry_simulator())
+
+
+# ==========================================
+# 1. DYNAMIC TELEMETRY SIMULATION STATE MACHINE
+# ==========================================
+class SimulatorTuningState:
+    def __init__(self):
+        self.interval_seconds = 4.0
+        self.force_next_type = None  # Options: "NOMINAL", "MEDIUM", "THREAT", "HONEYPOT"
+
+sim_tuning = SimulatorTuningState()
+
+class ControlDirective(BaseModel):
+    action: str  # Options: "SET_SPEED" | "TRIGGER_EVENT"
+    value: str   # Options: Speed intervals ("1", "4", "10") | Event type targets
+
+# ==========================================
+# 2. DYNAMIC CONTROL INGRESS ENDPOINT ROUTE
+# ==========================================
+@app.post("/api/v1/simulator/control")
+async def process_simulator_control(directive: ControlDirective):
+    if directive.action == "SET_SPEED":
+        try:
+            sim_tuning.interval_seconds = float(directive.value)
+            print(f"\033[95m⚙️  [SIMULATOR STATE] Transaction velocity updated to {directive.value}s interval.\033[0m")
+            return {"status": "success", "interval_seconds": sim_tuning.interval_seconds}
+        except ValueError:
+            return {"status": "error", "message": "Invalid floating point value for interval frequency"}
+        
+    elif directive.action == "TRIGGER_EVENT":
+        allowed_types = ["NOMINAL", "MEDIUM", "THREAT", "HONEYPOT"]
+        if directive.value not in allowed_types:
+            return {"status": "error", "message": f"Invalid injection vector profile type target. Allowed: {allowed_types}"}
+            
+        sim_tuning.force_next_type = directive.value
+        print(f"\033[95m⚙️  [SIMULATOR STATE] Manual anomaly event vector injected: {directive.value}\033[0m")
+        return {"status": "success", "injected_profile": directive.value}
+        
+    return {"status": "error", "message": "Invalid execution action keyword parameter configuration"}
 
 
 # ---------------------------------------------------------------------------
